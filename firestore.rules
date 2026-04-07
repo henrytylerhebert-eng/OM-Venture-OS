@@ -1,0 +1,167 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields: uid, email, displayName, role (om_admin, om_staff, founder, mentor), createdAt
+    //
+    // Collection: companies
+    // Fields: name, description, status (pending, active, inactive), stage, progressScore, readinessNotes, founderUids (list), createdAt
+    //
+    // Collection: cohorts
+    // Fields: name, description, startDate, endDate, isActive
+    //
+    // Collection: cohortApplications
+    // Fields: companyId, cohortId, founderUid, status (pending, approved, denied), submittedAt
+    //
+    // Collection: cohortParticipations
+    // Fields: companyId, cohortId, status (active, completed, dropped), joinedAt
+    //
+    // Collection: mentorAssignments
+    // Fields: mentorUid, companyId, assignedBy, assignedAt
+    //
+    // Collection: feedback
+    // Fields: mentorUid, companyId, content, createdAt
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'om_admin' ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'om_staff' ||
+         (request.auth.token.email == "tyler@opportunitymachine.org" && request.auth.token.email_verified == true));
+    }
+
+    function isFounderOf(companyId) {
+      return isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/companies/$(companyId)).data.founderUids;
+    }
+
+    function isAssignedMentor(companyId) {
+      // This is a bit complex for rules, usually we'd query mentorAssignments.
+      // For Phase 1, we'll check if there's an assignment record.
+      return isAuthenticated() && exists(/databases/$(database)/documents/mentorAssignments/$(request.auth.uid + "_" + companyId));
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             data.role in ['om_admin', 'om_staff', 'founder', 'mentor'];
+    }
+
+    function isValidCompany(data) {
+      return data.keys().hasAll(['name', 'status', 'stage', 'founderUids']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.status in ['pending', 'active', 'inactive'] &&
+             data.stage is string &&
+             data.founderUids is list;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'founder' || isAdmin());
+      allow update: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /companies/{companyId} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid in resource.data.founderUids) || isAssignedMentor(companyId);
+      allow create: if isAuthenticated() && isValidCompany(request.resource.data);
+      allow update: if isAdmin() || (isAuthenticated() && request.auth.uid in resource.data.founderUids && 
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'description']));
+    }
+
+    match /cohorts/{cohortId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /cohortApplications/{applicationId} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.founderUid);
+      allow create: if isAuthenticated() && request.resource.data.founderUid == request.auth.uid;
+      allow update: if isAdmin();
+    }
+
+    match /cohortParticipations/{participationId} {
+      allow read: if isAdmin() || (isAuthenticated() && isFounderOf(resource.data.companyId));
+      allow write: if isAdmin();
+    }
+
+    match /mentorAssignments/{assignmentId} {
+      allow read: if isAdmin() || (isAuthenticated() && (request.auth.uid == resource.data.mentorUid || isFounderOf(resource.data.companyId)));
+      allow write: if isAdmin();
+    }
+
+    match /feedback/{feedbackId} {
+      allow read: if isAdmin() || (isAuthenticated() && (request.auth.uid == resource.data.mentorUid || isFounderOf(resource.data.companyId)));
+      allow create: if isAuthenticated() && request.resource.data.mentorUid == request.auth.uid;
+      allow update: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.mentorUid);
+    }
+
+    match /interviews/{interviewId} {
+      allow read: if isAdmin() || (isAuthenticated() && (request.auth.uid == resource.data.founderUid || isAssignedMentor(resource.data.companyId)));
+      allow create: if isAuthenticated() && request.resource.data.founderUid == request.auth.uid;
+      allow update: if isAuthenticated() && request.auth.uid == resource.data.founderUid;
+    }
+
+    match /patterns/{patternId} {
+      allow read: if isAdmin() || isFounderOf(resource.data.companyId) || isAssignedMentor(resource.data.companyId);
+      allow write: if isAdmin() || isFounderOf(request.resource.data.companyId);
+    }
+
+    match /assumptions/{assumptionId} {
+      allow read: if isAdmin() || isFounderOf(resource.data.companyId) || isAssignedMentor(resource.data.companyId);
+      allow write: if isAdmin() || isFounderOf(request.resource.data.companyId);
+    }
+
+    match /experiments/{experimentId} {
+      allow read: if isAdmin() || isFounderOf(resource.data.companyId) || isAssignedMentor(resource.data.companyId);
+      allow write: if isAdmin() || isFounderOf(request.resource.data.companyId);
+    }
+
+    match /signals/{signalId} {
+      allow read: if isAdmin() || isFounderOf(resource.data.companyId) || isAssignedMentor(resource.data.companyId);
+      allow write: if isAdmin() || isFounderOf(request.resource.data.companyId);
+    }
+
+    match /readinessReviews/{reviewId} {
+      allow read: if isAdmin() || isFounderOf(resource.data.companyId) || isAssignedMentor(resource.data.companyId);
+      allow write: if isAdmin();
+    }
+
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}

@@ -1,0 +1,206 @@
+{
+  "entities": {
+    "user": {
+      "title": "User",
+      "description": "A person in the system (OM staff, founder, mentor).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["om_admin", "om_staff", "founder", "mentor"] },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "company": {
+      "title": "Company",
+      "description": "A startup or company in the ecosystem.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "active", "inactive"] },
+        "stage": { "type": "string", "enum": ["Idea Development", "Customer Discovery", "Product Development", "Beta Testing", "Customer Acquisition", "Growth", "Alumni"] },
+        "progressScore": { "type": "number" },
+        "readinessNotes": { "type": "string" },
+        "founderUids": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "status", "stage"]
+    },
+    "cohort": {
+      "title": "Cohort",
+      "description": "A startup support cohort program.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["name", "startDate", "isActive"]
+    },
+    "cohortApplication": {
+      "title": "Cohort Application",
+      "description": "A founder's request to join a cohort.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "cohortId": { "type": "string" },
+        "founderUid": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "denied"] },
+        "submittedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["companyId", "cohortId", "founderUid", "status"]
+    },
+    "cohortParticipation": {
+      "title": "Cohort Participation",
+      "description": "An active record of a company in a cohort.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "cohortId": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "completed", "dropped"] },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["companyId", "cohortId", "status"]
+    },
+    "mentorAssignment": {
+      "title": "Mentor Assignment",
+      "description": "A mentor assigned to a company.",
+      "type": "object",
+      "properties": {
+        "mentorUid": { "type": "string" },
+        "companyId": { "type": "string" },
+        "assignedBy": { "type": "string" },
+        "assignedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["mentorUid", "companyId"]
+    },
+    "feedback": {
+      "title": "Feedback",
+      "description": "Mentor feedback or meeting notes.",
+      "type": "object",
+      "properties": {
+        "mentorUid": { "type": "string" },
+        "companyId": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["mentorUid", "companyId", "content"]
+    },
+    "interview": {
+      "title": "Interview",
+      "description": "Customer discovery interview record.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "founderUid": { "type": "string" },
+        "segment": { "type": "string" },
+        "painIntensity": { "type": "number", "minimum": 1, "maximum": 10 },
+        "alternative": { "type": "string" },
+        "quote": { "type": "string" },
+        "spontaneous": { "type": "boolean" },
+        "followUp": { "type": "boolean" },
+        "date": { "type": "string", "format": "date-time" }
+      },
+      "required": ["companyId", "founderUid", "segment", "painIntensity"]
+    },
+    "pattern": {
+      "title": "Pattern",
+      "description": "Synthesized problem theme from interviews.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "theme": { "type": "string" },
+        "mentions": { "type": "number" },
+        "avgPain": { "type": "number" },
+        "quote": { "type": "string" },
+        "confidence": { "type": "number" },
+        "status": { "type": "string", "enum": ["keep", "narrow", "pivot"] }
+      },
+      "required": ["companyId", "theme", "status"]
+    },
+    "assumption": {
+      "title": "Assumption",
+      "description": "Risky assumption being tracked.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "statement": { "type": "string" },
+        "type": { "type": "string", "enum": ["desirability", "feasibility", "viability"] },
+        "importance": { "type": "number" },
+        "evidence": { "type": "number" },
+        "status": { "type": "string" },
+        "patternId": { "type": "string" },
+        "experimentId": { "type": "string" }
+      },
+      "required": ["companyId", "statement", "type"]
+    },
+    "experiment": {
+      "title": "Experiment",
+      "description": "Test to validate assumptions.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "hypothesis": { "type": "string" },
+        "testType": { "type": "string" },
+        "channel": { "type": "string" },
+        "offer": { "type": "string" },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "metric": { "type": "string" },
+        "result": { "type": "string" },
+        "learning": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "closed"] }
+      },
+      "required": ["companyId", "hypothesis", "status"]
+    },
+    "signal": {
+      "title": "Signal",
+      "description": "Real proof of traction.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "type": { "type": "string", "enum": ["call", "waitlist", "pilot", "loi", "preorder", "customer", "revenue", "repeat"] },
+        "count": { "type": "number" },
+        "notes": { "type": "string" },
+        "date": { "type": "string", "format": "date" }
+      },
+      "required": ["companyId", "type", "count", "date"]
+    },
+    "readinessReview": {
+      "title": "Readiness Review",
+      "description": "OM staff review of company readiness.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "type": { "type": "string", "enum": ["builder_completion", "mentor", "intern", "pitch", "investor"] },
+        "status": { "type": "string", "enum": ["ready", "not_ready", "pending"] },
+        "reasons": { "type": "string" },
+        "missingItems": { "type": "array", "items": { "type": "string" } },
+        "reviewedBy": { "type": "string" },
+        "reviewedOn": { "type": "string", "format": "date-time" }
+      },
+      "required": ["companyId", "type", "status", "reviewedBy"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": { "schema": "user", "description": "User profiles and roles." },
+    "/companies/{companyId}": { "schema": "company", "description": "Startup company records." },
+    "/cohorts/{cohortId}": { "schema": "cohort", "description": "Available cohort programs." },
+    "/cohortApplications/{applicationId}": { "schema": "cohortApplication", "description": "Applications for cohorts." },
+    "/cohortParticipations/{participationId}": { "schema": "cohortParticipation", "description": "Active cohort memberships." },
+    "/mentorAssignments/{assignmentId}": { "schema": "mentorAssignment", "description": "Mentor-company links." },
+    "/feedback/{feedbackId}": { "schema": "feedback", "description": "Meeting notes and feedback." },
+    "/interviews/{interviewId}": { "schema": "interview", "description": "Customer discovery interviews." },
+    "/patterns/{patternId}": { "schema": "pattern", "description": "Synthesized problem patterns." },
+    "/assumptions/{assumptionId}": { "schema": "assumption", "description": "Risky assumptions." },
+    "/experiments/{experimentId}": { "schema": "experiment", "description": "Validation experiments." },
+    "/signals/{signalId}": { "schema": "signal", "description": "Traction signals." },
+    "/readinessReviews/{reviewId}": { "schema": "readinessReview", "description": "Official readiness assessments." }
+  }
+}
