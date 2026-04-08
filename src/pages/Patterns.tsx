@@ -19,6 +19,7 @@ import { useAuth } from '../components/AuthProvider';
 import {
   createPattern,
   deletePattern,
+  getAssumptions,
   getInterviews,
   listPatternsByCompany,
   listPatternsForStaffReview,
@@ -30,6 +31,8 @@ import { getCompanies } from '../services/companyService';
 import { getMentorAssignments } from '../services/mentorService';
 import {
   AssignmentStatus,
+  Assumption,
+  AssumptionStatus,
   Company,
   Interview,
   MentorAssignment,
@@ -70,6 +73,19 @@ interface InterviewEvidenceSummary {
   representativeQuote: string;
   defaultTheme: string;
   cohortParticipationId?: string;
+}
+
+interface RankedInterviewValue {
+  label: string;
+  count: number;
+}
+
+interface PatternDecisionCard {
+  pattern: Pattern;
+  strongestQuote: string;
+  whoFeelsItMost: string;
+  currentAlternative: string;
+  evidenceStrength: 'repeated' | 'emerging' | 'thin';
 }
 
 interface PatternReviewTableProps {
@@ -153,6 +169,109 @@ const summarizeInterviewEvidence = (interviews: Interview[]): InterviewEvidenceS
     defaultTheme,
     cohortParticipationId,
   };
+};
+
+const rankInterviewValues = (
+  interviews: Interview[],
+  pickValue: (interview: Interview) => string
+): RankedInterviewValue[] =>
+  Object.values(
+    interviews.reduce<Record<string, RankedInterviewValue>>((acc, interview) => {
+      const value = pickValue(interview).trim();
+      if (!value) {
+        return acc;
+      }
+
+      const key = value.toLowerCase();
+      acc[key] = {
+        label: value,
+        count: (acc[key]?.count || 0) + 1,
+      };
+      return acc;
+    }, {})
+  ).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+const getPatternSourceInterviews = (pattern: Pattern, interviews: Interview[]) => {
+  if (pattern.sourceInterviewIds.length > 0) {
+    const sourceIds = new Set(pattern.sourceInterviewIds);
+    return interviews.filter((interview) => sourceIds.has(interview.id));
+  }
+
+  return interviews.filter(
+    (interview) => normalizeThemeKey(interview.problemTheme) === normalizeThemeKey(pattern.problemTheme)
+  );
+};
+
+const getPatternEvidenceStrength = (pattern: Pattern): PatternDecisionCard['evidenceStrength'] => {
+  if (
+    pattern.confidence === StageConfidence.HIGH ||
+    pattern.numberOfMentions >= 4 ||
+    pattern.averagePainIntensity >= 4 ||
+    pattern.unpromptedMentions >= 2
+  ) {
+    return 'repeated';
+  }
+
+  if (
+    pattern.confidence === StageConfidence.MEDIUM ||
+    pattern.numberOfMentions >= 2 ||
+    pattern.averagePainIntensity >= 3
+  ) {
+    return 'emerging';
+  }
+
+  return 'thin';
+};
+
+const buildPatternDecisionCards = (
+  patterns: Pattern[],
+  interviews: Interview[]
+): PatternDecisionCard[] =>
+  patterns
+    .slice()
+    .sort(
+      (a, b) =>
+        b.numberOfMentions - a.numberOfMentions ||
+        b.averagePainIntensity - a.averagePainIntensity ||
+        b.unpromptedMentions - a.unpromptedMentions
+    )
+    .map((pattern) => {
+      const sourceInterviews = getPatternSourceInterviews(pattern, interviews);
+      const strongestQuote =
+        sourceInterviews.find((interview) => interview.bestQuote.trim())?.bestQuote || pattern.representativeQuote;
+      const whoFeelsItMost = rankInterviewValues(sourceInterviews, (interview) => interview.intervieweeSegment)[0]?.label;
+      const currentAlternative = rankInterviewValues(
+        sourceInterviews,
+        (interview) => interview.currentAlternative
+      )[0]?.label;
+
+      return {
+        pattern,
+        strongestQuote,
+        whoFeelsItMost: whoFeelsItMost || 'Segment still needs sharper evidence',
+        currentAlternative: currentAlternative || 'No clear alternative recorded yet',
+        evidenceStrength: getPatternEvidenceStrength(pattern),
+      };
+    });
+
+const getAssumptionGapLabel = (assumption: Assumption) => {
+  if (assumption.notes?.trim()) {
+    return assumption.notes.trim();
+  }
+
+  if (assumption.status === AssumptionStatus.VALIDATED) {
+    return 'This assumption already has enough evidence to move out of the highest-risk stack.';
+  }
+
+  if (assumption.evidenceScore <= 2) {
+    return 'Very little proof exists yet, so this risk still needs a direct test.';
+  }
+
+  if (assumption.evidenceScore <= 5) {
+    return 'Some evidence exists, but it is not strong enough to remove the risk.';
+  }
+
+  return 'Pressure-test whether the existing evidence is strong enough to keep this out of the next test.';
 };
 
 const buildThemeSummaries = (interviews: Interview[], patterns: Pattern[]): ThemeSummary[] => {
@@ -322,6 +441,7 @@ const Patterns: React.FC = () => {
   const canEditPatterns = isStaff || isFounder;
 
   const [patterns, setPatterns] = useState<Pattern[]>([]);
+  const [assumptions, setAssumptions] = useState<Assumption[]>([]);
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [mentorAssignments, setMentorAssignments] = useState<MentorAssignment[]>([]);
@@ -406,6 +526,15 @@ const Patterns: React.FC = () => {
     return getInterviews(setInterviews, companyScope);
   }, [isStaff, selectedCompanyId]);
 
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      setAssumptions([]);
+      return undefined;
+    }
+
+    return getAssumptions(setAssumptions, selectedCompanyId);
+  }, [selectedCompanyId]);
+
   const companiesById = useMemo(
     () =>
       companies.reduce<Record<string, Company>>((acc, company) => {
@@ -442,9 +571,13 @@ const Patterns: React.FC = () => {
   );
 
   const widgetSummary = useMemo(() => summarizePatternWidgets(filteredPatterns), [filteredPatterns]);
-  const strongestPattern = widgetSummary.strongestPattern;
-  const strongPatternCount = widgetSummary.strongPatternCount;
-  const pivotCandidateCount = widgetSummary.pivotCandidateCount;
+  const overallWidgetSummary = useMemo(
+    () => summarizePatternWidgets(selectedCompanyPatterns),
+    [selectedCompanyPatterns]
+  );
+  const strongestPattern = overallWidgetSummary.strongestPattern;
+  const strongPatternCount = overallWidgetSummary.strongPatternCount;
+  const pivotCandidateCount = overallWidgetSummary.pivotCandidateCount;
   const strongestPatterns = widgetSummary.strongestPatterns;
   const weakestPatterns = widgetSummary.weakestPatterns;
   const lowConfidencePatterns = widgetSummary.lowConfidencePatterns;
@@ -453,6 +586,46 @@ const Patterns: React.FC = () => {
   const interviewsMissingTheme = selectedCompanyInterviews.filter((interview) => !interview.problemTheme.trim()).length;
   const interviewsMissingQuote = selectedCompanyInterviews.filter((interview) => !interview.bestQuote.trim()).length;
   const interviewsPath = getRoleScopedPath(profile?.role, 'discovery');
+  const assumptionsPath = getRoleScopedPath(profile?.role, 'assumptions');
+  const experimentsPath = getRoleScopedPath(profile?.role, 'experiments');
+  const countedInterviewCount = selectedCompanyInterviews.filter((interview) => interview.countsTowardMinimum).length;
+  const spontaneousMentionCount = selectedCompanyInterviews.filter((interview) => interview.mentionSpontaneous).length;
+  const promptedMentionCount = Math.max(selectedCompanyInterviews.length - spontaneousMentionCount, 0);
+  const topSegments = useMemo(
+    () => rankInterviewValues(selectedCompanyInterviews, (interview) => interview.intervieweeSegment).slice(0, 3),
+    [selectedCompanyInterviews]
+  );
+  const topAlternatives = useMemo(
+    () => rankInterviewValues(selectedCompanyInterviews, (interview) => interview.currentAlternative).slice(0, 3),
+    [selectedCompanyInterviews]
+  );
+  const patternDecisionCards = useMemo(
+    () => buildPatternDecisionCards(selectedCompanyPatterns, selectedCompanyInterviews).slice(0, 5),
+    [selectedCompanyInterviews, selectedCompanyPatterns]
+  );
+  const rankedAssumptions = useMemo(
+    () =>
+      assumptions
+        .slice()
+        .sort(
+          (a, b) =>
+            (b.priorityScore || 0) - (a.priorityScore || 0) ||
+            (b.importanceScore || 0) - (a.importanceScore || 0) ||
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        ),
+    [assumptions]
+  );
+  const weakestAssumption = useMemo(
+    () =>
+      rankedAssumptions.find((assumption) => assumption.status !== AssumptionStatus.VALIDATED) ||
+      rankedAssumptions[0],
+    [rankedAssumptions]
+  );
+  const currentDirectionPattern = useMemo(
+    () => strongestPattern || selectedCompanyPatterns[0] || null,
+    [selectedCompanyPatterns, strongestPattern]
+  );
+  const mvpDesignUnlocked = Boolean(currentDirectionPattern && strongPatternCount > 0 && rankedAssumptions.length > 0);
 
   const selectedSourceInterviews = useMemo(() => {
     const sourceIds = new Set(formData.sourceInterviewIds);
@@ -708,7 +881,7 @@ const Patterns: React.FC = () => {
                 : 'border border-sky-200 bg-sky-50 text-sky-800'
           )}
         >
-          {isStaff ? 'OM Pattern Review' : isMentor ? 'Mentor Pattern Readout' : 'Builder Pattern Synthesis'}
+          {isStaff ? 'OM Pattern Review' : isMentor ? 'Mentor Pattern Readout' : 'Builder Patterns & Assumptions'}
         </div>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-2">
@@ -717,14 +890,14 @@ const Patterns: React.FC = () => {
                 ? 'Review repeated truth, not loose notes.'
                 : isMentor
                   ? 'See the problem themes behind the founder story.'
-                  : 'Turn interviews into repeated truth.'}
+                  : 'Patterns & Assumptions'}
             </h1>
             <p className="max-w-3xl text-sm leading-6 text-slate-600">
               {isStaff
                 ? 'Use patterns to see which themes are strong enough to trust, which ones still look weak, which ones are low-confidence, and where a founder may need to narrow or pivot.'
                 : isMentor
                   ? 'This is a read-only synthesis layer for assigned companies so mentor guidance can attach to repeated signals instead of one-off anecdotes.'
-                  : 'Patterns should summarize repeated customer truth from interviews, not become another note field. Every pattern should stay linked to the interviews underneath it.'}
+                  : 'This Builder step turns interview evidence into repeated truth, ranked risk, and a clear direction before you move into MVP or test design.'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -810,7 +983,362 @@ const Patterns: React.FC = () => {
         </section>
       )}
 
-      {selectedCompanyId && (
+      {isFounder && selectedCompanyId && (
+        <>
+          <section className="rounded-[28px] border border-sky-200 bg-sky-50 p-6 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-800">
+                  <span className="rounded-full bg-white px-3 py-1 ring-1 ring-sky-200">Interview Capture</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  <span className="rounded-full bg-sky-900 px-3 py-1 text-white">Patterns &amp; Assumptions</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  <span className="rounded-full bg-white px-3 py-1 ring-1 ring-sky-200">MVP / Test Design</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-950">Turn interview evidence into usable direction.</h2>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">
+                    You&apos;ve captured interviews. Now turn them into repeated truth. Patterns show what is real in the
+                    evidence. Assumptions show what is still risky or unproven before you build the next test.
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-800">Progress Rule</p>
+                <p className="mt-2 max-w-xs">
+                  You cannot move into MVP / Test Design until repeated pain and top assumptions are named.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-950">Evidence Intake Summary</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Start with the raw interview evidence this synthesis step is built from.
+                </p>
+              </div>
+              <Link
+                to={interviewsPath}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:border-slate-400"
+              >
+                Review Interview Capture
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Interviews In This Step</p>
+                <p className="mt-3 text-3xl font-semibold text-slate-950">{countedInterviewCount}</p>
+                <p className="mt-2 text-sm text-slate-600">
+                  Counted interviews feeding this synthesis layer right now.
+                </p>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Who Feels It Most</p>
+                <p className="mt-3 text-lg font-semibold text-slate-950">{topSegments[0]?.label || 'Segment still needs sharper evidence'}</p>
+                <p className="mt-2 text-sm text-slate-600">
+                  {topSegments[0] ? `${topSegments[0].count} interviews in the strongest segment cluster.` : 'Add sharper segment labels in Interview Capture.'}
+                </p>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Strongest Repeated Pain</p>
+                <p className="mt-3 text-lg font-semibold text-slate-950">
+                  {strongestPattern?.problemTheme || unsynthesizedThemes[0]?.theme || 'No repeated pain is clear yet'}
+                </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  {strongestPattern
+                    ? `${strongestPattern.numberOfMentions} repeated mentions linked to one synthesized pattern.`
+                    : 'Create or refine a pattern before moving into test design.'}
+                </p>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Spontaneous Vs Prompted</p>
+                <p className="mt-3 text-lg font-semibold text-slate-950">
+                  {spontaneousMentionCount} spontaneous / {promptedMentionCount} prompted
+                </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  Prompted pain is weaker than pain that keeps surfacing on its own.
+                </p>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">What People Do Now</p>
+                <p className="mt-3 text-lg font-semibold text-slate-950">
+                  {topAlternatives[0]?.label || 'No clear alternative recorded yet'}
+                </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  {topAlternatives[0]
+                    ? `${topAlternatives[0].count} interviews named this as the current workaround.`
+                    : 'Capture current alternatives in Interview Capture to sharpen test design.'}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-950">Pattern Decision Board</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Patterns are evidence-backed observations. Confirm the repeated pains that are strong enough to steer your next move.
+                </p>
+              </div>
+              <Brain className="h-5 w-5 text-sky-500" />
+            </div>
+
+            {patternDecisionCards.length > 0 ? (
+              <div className="mt-6 grid gap-4 xl:grid-cols-2">
+                {patternDecisionCards.map((card) => (
+                  <article key={card.pattern.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-lg font-semibold text-slate-950">{card.pattern.problemTheme}</h3>
+                      {strongestPattern?.id === card.pattern.id && (
+                        <span className="rounded-full bg-sky-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+                          Strongest Pattern
+                        </span>
+                      )}
+                      <span
+                        className={cn(
+                          'rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]',
+                          card.evidenceStrength === 'repeated' && 'bg-emerald-100 text-emerald-700',
+                          card.evidenceStrength === 'emerging' && 'bg-amber-100 text-amber-700',
+                          card.evidenceStrength === 'thin' && 'bg-slate-200 text-slate-700'
+                        )}
+                      >
+                        {card.evidenceStrength}
+                      </span>
+                    </div>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Who Feels It Most</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">{card.whoFeelsItMost}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Current Alternative</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">{card.currentAlternative}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Evidence</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">
+                          {card.pattern.numberOfMentions} mentions, {card.pattern.unpromptedMentions} spontaneous
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Direction Call</p>
+                        <p className="mt-1 text-sm font-medium capitalize text-slate-900">{card.pattern.status}</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 rounded-2xl border-l-4 border-sky-400 bg-white p-4">
+                      <p className="text-sm italic leading-6 text-slate-700">
+                        {card.strongestQuote ? `"${card.strongestQuote}"` : 'Add a strong quote from Interview Capture before treating this as repeated truth.'}
+                      </p>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between gap-4">
+                      <p className="text-sm leading-6 text-slate-600">
+                        {card.pattern.notes?.trim() || 'Add a short rationale explaining why this pattern points toward persevering, narrowing, or pivoting.'}
+                      </p>
+                      {canEditPatterns && (
+                        <button
+                          onClick={() => handleEdit(card.pattern)}
+                          className="inline-flex shrink-0 items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 transition-colors hover:border-slate-400"
+                        >
+                          Refine
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-6 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8">
+                <h3 className="text-lg font-semibold text-slate-950">No decision-ready patterns yet</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Auto-generated themes are waiting below. Tighten wording, merge duplicates, and turn repeated pains into
+                  real pattern objects before you move on to assumptions.
+                </p>
+              </div>
+            )}
+          </section>
+
+          <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-950">Assumption Stack</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Assumptions are the remaining risks. Use them to name what is still unproven before you design a test.
+                  </p>
+                </div>
+                <Link
+                  to={assumptionsPath}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:border-slate-400"
+                >
+                  Open Assumption Stack
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+
+              {rankedAssumptions.length > 0 ? (
+                <div className="mt-6 space-y-4">
+                  {rankedAssumptions.slice(0, 3).map((assumption, index) => (
+                    <div key={assumption.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-base font-semibold text-slate-950">{assumption.statement}</h3>
+                        {weakestAssumption?.id === assumption.id && (
+                          <span className="rounded-full bg-rose-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-rose-700">
+                            Weakest Assumption
+                          </span>
+                        )}
+                        <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600 ring-1 ring-slate-200">
+                          {assumption.type}
+                        </span>
+                        <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600 ring-1 ring-slate-200">
+                          Priority {assumption.priorityScore}
+                        </span>
+                      </div>
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Why This Is Still Risky</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-700">{getAssumptionGapLabel(assumption)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">What Evidence Exists</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-700">
+                            {assumption.linkedPatternId
+                              ? `Linked to ${selectedCompanyPatterns.find((pattern) => pattern.id === assumption.linkedPatternId)?.problemTheme || 'a pattern'} with evidence score ${assumption.evidenceScore}.`
+                              : `Current evidence score ${assumption.evidenceScore}. Link this to a pattern when repeated truth is clear.`}
+                          </p>
+                        </div>
+                      </div>
+                      {index < rankedAssumptions.slice(0, 3).length - 1 && <div className="mt-4 border-t border-slate-200" />}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-6 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8">
+                  <h3 className="text-lg font-semibold text-slate-950">No ranked assumptions yet</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    After patterns are clear, map the risks that would break this direction if they turn out to be wrong.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-6">
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-slate-950">Direction Decision</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  This is the Builder choice point. Tie the call directly to repeated evidence, not optimism.
+                </p>
+                <div className="mt-5 space-y-3">
+                  {[PatternStatus.KEEP, PatternStatus.NARROW, PatternStatus.PIVOT].map((status) => (
+                    <div
+                      key={status}
+                      className={cn(
+                        'rounded-2xl border px-4 py-4',
+                        currentDirectionPattern?.status === status
+                          ? 'border-slate-900 bg-slate-950 text-white'
+                          : 'border-slate-200 bg-slate-50 text-slate-700'
+                      )}
+                    >
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em]">
+                        {status === PatternStatus.KEEP
+                          ? 'Persevere'
+                          : status === PatternStatus.NARROW
+                            ? 'Narrow'
+                            : 'Pivot'}
+                      </p>
+                      <p className="mt-2 text-sm leading-6">
+                        {status === PatternStatus.KEEP
+                          ? 'The same pain and segment are repeating strongly enough to keep moving in this direction.'
+                          : status === PatternStatus.NARROW
+                            ? 'The pain looks real, but the segment, use case, or workflow needs a tighter focus.'
+                            : 'The strongest evidence points away from the current direction and toward a different path.'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Current Evidence-Tied Rationale</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-700">
+                    {currentDirectionPattern?.notes?.trim() ||
+                      'Add a short rationale in the strongest pattern so this decision is anchored to interview evidence, not opinion.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-slate-950">MVP / Test Design Handoff</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  The next step should inherit the strongest pain, priority segment, and weakest assumption.
+                </p>
+                {mvpDesignUnlocked ? (
+                  <div className="mt-5 space-y-3">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Ready For MVP / Test Design</p>
+                      <p className="mt-2 text-sm leading-6 text-emerald-900">
+                        Build only what helps you learn whether the weakest assumption is true.
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                      <span className="font-semibold text-slate-900">Pain to design around:</span>{' '}
+                      {strongestPattern?.problemTheme || 'No strongest pattern set'}
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                      <span className="font-semibold text-slate-900">Segment to test first:</span>{' '}
+                      {topSegments[0]?.label || 'Segment still needs sharper evidence'}
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                      <span className="font-semibold text-slate-900">Assumption to resolve:</span>{' '}
+                      {weakestAssumption?.statement || 'No assumption ranked yet'}
+                    </div>
+                    <Link
+                      to={experimentsPath}
+                      className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                    >
+                      Open MVP / Test Design
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+                    <p className="font-semibold text-amber-950">This next step stays locked until synthesis is real.</p>
+                    <ul className="mt-3 space-y-2 leading-6">
+                      <li>At least one strong pattern must exist.</li>
+                      <li>At least one ranked assumption must be named.</li>
+                      <li>The current direction must be explicit through a persevere, narrow, or pivot call.</li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-950">Keep These Distinctions Clean</h2>
+            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              {[
+                ['Membership status', 'Program participation status only.'],
+                ['Venture stage', 'Where the company is in the Builder journey.'],
+                ['Readiness', 'OM staff judgment about whether the next step is truly earned.'],
+                ['Unlock eligibility', 'What support may open after stronger proof exists.'],
+                ['Investor visibility', 'Not active in this step and should not be implied by synthesis alone.'],
+              ].map(([title, description]) => (
+                <div key={title} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{title}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-700">{description}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+
+      {selectedCompanyId && !isFounder && (
         <section className="grid gap-4 md:grid-cols-3">
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Strongest Pattern</p>
@@ -1197,7 +1725,9 @@ const Patterns: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700">Synthesis Notes</label>
+                    <label className="block text-sm font-medium text-slate-700">
+                      {isFounder ? 'Direction Rationale' : 'Synthesis Notes'}
+                    </label>
                     <textarea
                       rows={5}
                       value={formData.notes}
@@ -1206,7 +1736,11 @@ const Patterns: React.FC = () => {
                         setFormData({ ...formData, notes: event.target.value });
                       }}
                       className="mt-2 w-full rounded-3xl border border-slate-300 px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-slate-400 focus:outline-none"
-                      placeholder="Why does this pattern matter, and what should it change about the next assumption or test?"
+                      placeholder={
+                        isFounder
+                          ? 'Why does this evidence point toward persevering, narrowing, or pivoting, and what should it change about the next test?'
+                          : 'Why does this pattern matter, and what should it change about the next assumption or test?'
+                      }
                     />
                   </div>
                 </div>

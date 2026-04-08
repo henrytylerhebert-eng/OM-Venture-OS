@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Brain,
   ClipboardCheck,
+  FileSearch,
   FlaskConical,
   LayoutDashboard,
   Lightbulb,
@@ -26,6 +27,12 @@ const sections: ShellNavSection[] = [
         path: '/staff/readiness',
         icon: ClipboardCheck,
         description: 'Review proof, issue decisions, and keep readiness separate from membership.',
+      },
+      {
+        label: 'Evidence Intake',
+        path: '/staff/intake',
+        icon: FileSearch,
+        description: 'Review raw Jotform discovery submissions before they become canonical evidence.',
       },
       {
         label: 'Venture Copilot',

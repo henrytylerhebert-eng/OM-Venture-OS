@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { where } from 'firebase/firestore';
 import {
@@ -23,6 +23,7 @@ import {
   getInterviews,
   getPatterns,
   getSignals,
+  summarizePatternWidgets,
 } from '../services/evidenceService';
 import { getMentorAssignments } from '../services/mentorService';
 import { getPortfolioProgress, getReadinessReviews } from '../services/progressService';
@@ -177,43 +178,80 @@ const FounderDashboard: React.FC = () => {
     });
   const selectedApplication = myApplications.find((application) => application.companyId === selectedCompanyId);
   const activeCohort = cohorts.find((cohort) => cohort.status === 'active') || cohorts[0];
+  const strongestPattern = useMemo(
+    () => summarizePatternWidgets(patterns).strongestPattern,
+    [patterns]
+  );
+  const synthesisReady = Boolean(
+    selectedInsight && selectedInsight.strongPatternCount > 0 && selectedInsight.assumptionCount > 0 && strongestPattern
+  );
+  const currentDirectionLabel =
+    strongestPattern?.status.replace(/_/g, ' ') || 'direction still needs a decision';
+  const currentBuilderStep = selectedInsight
+    ? selectedInsight.countedInterviews === 0
+      ? {
+          label: 'Interview Capture',
+          description: 'Start by logging customer conversations with clear pain, segment, alternatives, and quotes before you try to synthesize anything.',
+          nextAction: 'Log interviews',
+          nextPath: getRoleScopedPath(profile?.role, 'discovery'),
+        }
+      : !synthesisReady
+        ? {
+            label: 'Patterns & Assumptions',
+            description: 'You have interview evidence. Now turn it into repeated truth, ranked risk, and a clear persevere, narrow, or pivot call before you design an MVP or test.',
+            nextAction: 'Open synthesis step',
+            nextPath: getRoleScopedPath(profile?.role, 'patterns'),
+          }
+        : {
+            label: 'MVP / Test Design',
+            description: 'Your strongest pattern and weakest assumption are ready to shape a focused test. Build only what helps you learn next.',
+            nextAction: 'Design next test',
+            nextPath: getRoleScopedPath(profile?.role, 'experiments'),
+          }
+    : null;
 
   const evidenceLinks = selectedCompany
     ? [
         {
-          label: 'Customer discovery',
+          label: 'Interview Capture',
           path: getRoleScopedPath(profile?.role, 'discovery'),
-          description: 'Interviews that count toward the Builder minimum and surface real pain.',
+          description: 'Capture customer truth before you try to synthesize or design a test.',
           count: selectedInsight?.countedInterviews || 0,
+          detail: `${selectedInsight?.highPainInterviewCount || 0} strong pain signal${selectedInsight?.highPainInterviewCount === 1 ? '' : 's'}`,
           icon: MessageSquare,
+          locked: false,
         },
         {
-          label: 'Patterns',
+          label: 'Patterns & Assumptions',
           path: getRoleScopedPath(profile?.role, 'patterns'),
-          description: 'Repeated truths that turn interview notes into evidence.',
-          count: selectedInsight?.strongPatternCount || 0,
+          description: 'Turn interviews into repeated truth, ranked risk, and a direction decision before you move forward.',
+          count: (selectedInsight?.strongPatternCount || 0) + (selectedInsight?.assumptionCount || 0),
+          detail: `${selectedInsight?.strongPatternCount || 0} pattern${selectedInsight?.strongPatternCount === 1 ? '' : 's'} / ${selectedInsight?.assumptionCount || 0} assumption${selectedInsight?.assumptionCount === 1 ? '' : 's'}`,
           icon: Brain,
+          locked: false,
         },
         {
-          label: 'Assumptions',
-          path: getRoleScopedPath(profile?.role, 'assumptions'),
-          description: 'Risks that still need proof before you build or fundraise.',
-          count: selectedInsight?.assumptionCount || 0,
-          icon: Lightbulb,
-        },
-        {
-          label: 'Experiments',
+          label: 'MVP / Test Design',
           path: getRoleScopedPath(profile?.role, 'experiments'),
-          description: 'Tests that move you beyond discovery and into validation.',
+          description: synthesisReady
+            ? 'Use your strongest pattern and weakest assumption to design the smallest useful test.'
+            : 'Locked until repeated pain and top assumptions are named.',
           count: selectedInsight?.experimentCount || 0,
           icon: FlaskConical,
+          detail: synthesisReady ? `Current direction: ${currentDirectionLabel}` : 'Complete synthesis first',
+          locked: !synthesisReady,
         },
         {
-          label: 'Signals',
+          label: 'Live Test Signals',
           path: getRoleScopedPath(profile?.role, 'signals'),
-          description: 'Measurable traction that proves the test is becoming real.',
+          description: 'Track what changed once a real test started running in the market.',
           count: selectedInsight?.tractionSignalCount || 0,
+          detail:
+            selectedInsight?.experimentCount && selectedInsight.experimentCount > 0
+              ? `${selectedInsight.experimentCount} test${selectedInsight.experimentCount === 1 ? '' : 's'} in motion`
+              : 'No live tests yet',
           icon: SignalIcon,
+          locked: false,
         },
       ]
     : [];
@@ -410,33 +448,74 @@ const FounderDashboard: React.FC = () => {
           </section>
 
           <section className="grid gap-6 xl:grid-cols-[1.2fr_0.9fr]">
+            {currentBuilderStep && (
+              <div className="rounded-[28px] border border-sky-200 bg-sky-50 p-6 shadow-sm xl:col-span-2">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-800">Current Builder Step</p>
+                    <h2 className="text-xl font-semibold text-slate-950">{currentBuilderStep.label}</h2>
+                    <p className="max-w-3xl text-sm leading-6 text-slate-700">{currentBuilderStep.description}</p>
+                  </div>
+                  <Link
+                    to={currentBuilderStep.nextPath}
+                    className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                  >
+                    {currentBuilderStep.nextAction}
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
+              </div>
+            )}
+
             <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-950">Evidence Workflow</h2>
-                  <p className="mt-1 text-sm text-slate-500">Open the Builder surfaces that move proof forward this week.</p>
+                  <h2 className="text-lg font-semibold text-slate-950">Builder Journey</h2>
+                  <p className="mt-1 text-sm text-slate-500">Move from interview capture into synthesis, then into the smallest useful test.</p>
                 </div>
               </div>
               <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {evidenceLinks.map((item) => (
-                  <Link
-                    key={item.label}
-                    to={item.path}
-                    className="group rounded-3xl border border-slate-200 bg-slate-50 p-5 transition-colors hover:border-slate-300 hover:bg-white"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <item.icon className="h-5 w-5 text-slate-500" />
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 ring-1 ring-slate-200">
-                        {item.count}
+                  item.locked ? (
+                    <div
+                      key={item.label}
+                      className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 opacity-80"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <item.icon className="h-5 w-5 text-slate-400" />
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 ring-1 ring-slate-200">
+                          {item.count}
+                        </span>
+                      </div>
+                      <h3 className="mt-4 text-base font-semibold text-slate-950">{item.label}</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
+                      <p className="mt-3 text-sm font-medium text-slate-700">{item.detail}</p>
+                      <span className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-slate-500">
+                        Locked for now
+                        <AlertCircle className="h-4 w-4" />
                       </span>
                     </div>
-                    <h3 className="mt-4 text-base font-semibold text-slate-950">{item.label}</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
-                    <span className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                      Open workspace
-                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                    </span>
-                  </Link>
+                  ) : (
+                    <Link
+                      key={item.label}
+                      to={item.path}
+                      className="group rounded-3xl border border-slate-200 bg-slate-50 p-5 transition-colors hover:border-slate-300 hover:bg-white"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <item.icon className="h-5 w-5 text-slate-500" />
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 ring-1 ring-slate-200">
+                          {item.count}
+                        </span>
+                      </div>
+                      <h3 className="mt-4 text-base font-semibold text-slate-950">{item.label}</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
+                      {item.detail && <p className="mt-3 text-sm font-medium text-slate-700">{item.detail}</p>}
+                      <span className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                        Open workspace
+                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                      </span>
+                    </Link>
+                  )
                 ))}
               </div>
             </div>

@@ -102,6 +102,72 @@ service cloud.firestore {
         (!(data.confidence == 'high') || data.representativeQuote.size() > 0);
     }
 
+    function isValidSourceSubmissionPayload(data) {
+      return data.sourceSystem in ['jotform', 'airtable'] &&
+        data.sourceLane in ['discovery_plan', 'meeting_notes'] &&
+        data.sourceFormId is string &&
+        data.sourceFormId.size() > 0 &&
+        data.sourceFormTitle is string &&
+        data.sourceFormTitle.size() > 0 &&
+        data.sourceSubmissionId is string &&
+        data.sourceSubmissionId.size() > 0 &&
+        data.rawPayload is map &&
+        data.sourceHash is string &&
+        data.sourceHash.size() > 0 &&
+        data.matchConfidence in ['high', 'medium', 'low', 'unresolved'] &&
+        data.ingestionStatus in ['received', 'matched', 'needs_review', 'ready_to_normalize', 'normalized', 'ignored'] &&
+        data.normalizedTargets is list &&
+        data.createdAt is string &&
+        data.updatedAt is string &&
+        (!(data.sourceSubmittedAt != null) || data.sourceSubmittedAt is string) &&
+        (!(data.sourceUpdatedAt != null) || data.sourceUpdatedAt is string) &&
+        (!(data.sourceSubmitterName != null) || data.sourceSubmitterName is string) &&
+        (!(data.sourceSubmitterEmail != null) || data.sourceSubmitterEmail is string) &&
+        (!(data.sourceCompanyText != null) || data.sourceCompanyText is string) &&
+        (!(data.sourceFounderText != null) || data.sourceFounderText is string) &&
+        (!(data.sourceMeetingDate != null) || data.sourceMeetingDate is string) &&
+        (!(data.sourceTopicText != null) || data.sourceTopicText is string) &&
+        (!(data.sourceQuestionSetType != null) || data.sourceQuestionSetType is string) &&
+        (!(data.matchedCompanyId != null) || data.matchedCompanyId is string) &&
+        (!(data.matchedPersonId != null) || data.matchedPersonId is string) &&
+        (!(data.ingestionNotes != null) || data.ingestionNotes is string) &&
+        (!(data.matchedByPersonId != null) || data.matchedByPersonId is string) &&
+        (!(data.matchedAt != null) || data.matchedAt is string) &&
+        (!(data.normalizedAt != null) || data.normalizedAt is string);
+    }
+
+    function isValidIngestionReviewPayload(data) {
+      return data.sourceSubmissionId is string &&
+        data.sourceSubmissionId.size() > 0 &&
+        data.status in ['open', 'resolved'] &&
+        data.reviewReason in [
+          'ambiguous_company_match',
+          'ambiguous_person_match',
+          'match_conflict',
+          'canonical_collision',
+          'weak_content',
+          'legacy_context',
+          'malformed_submission'
+        ] &&
+        data.actionNeeded is string &&
+        data.actionNeeded.size() > 0 &&
+        data.proposedConfidence in ['high', 'medium', 'low', 'unresolved'] &&
+        data.createdAt is string &&
+        data.updatedAt is string &&
+        (!(data.proposedCompanyId != null) || data.proposedCompanyId is string) &&
+        (!(data.proposedPersonId != null) || data.proposedPersonId is string) &&
+        (!(data.reviewedByPersonId != null) || data.reviewedByPersonId is string) &&
+        (!(data.reviewedAt != null) || data.reviewedAt is string) &&
+        (!(data.resolutionType != null) || data.resolutionType in [
+          'accept_proposed_match',
+          'override_match',
+          'ready_to_normalize',
+          'mark_unresolved',
+          'ignore'
+        ]) &&
+        (!(data.resolutionNotes != null) || data.resolutionNotes is string);
+    }
+
     // ===============================================================
     // Collection Rules
     // ===============================================================
@@ -188,6 +254,16 @@ service cloud.firestore {
     match /feedback/{feedId} {
       allow read: if isStaff() || isMentor() || isFounder();
       allow create: if isAuthenticated();
+    }
+
+    match /sourceSubmissions/{id} {
+      allow read: if isStaff();
+      allow write: if isStaff() && isValidSourceSubmissionPayload(request.resource.data);
+    }
+
+    match /ingestionReviewQueue/{id} {
+      allow read: if isStaff();
+      allow write: if isStaff() && isValidIngestionReviewPayload(request.resource.data);
     }
 
     // Phase 2: Evidence Engine

@@ -217,6 +217,114 @@
       },
       "required": ["meetingRequestId", "companyId", "submittedByRole", "submittedAt"]
     },
+    "sourceSubmission": {
+      "title": "Source Submission",
+      "description": "Raw source capture for Airtable-anchored and Jotform-origin evidence before normalization.",
+      "type": "object",
+      "properties": {
+        "sourceSystem": { "type": "string", "enum": ["jotform", "airtable"] },
+        "sourceLane": { "type": "string", "enum": ["discovery_plan", "meeting_notes"] },
+        "sourceFormId": { "type": "string" },
+        "sourceFormTitle": { "type": "string" },
+        "sourceSubmissionId": { "type": "string" },
+        "sourceSubmittedAt": { "type": "string", "format": "date-time" },
+        "sourceUpdatedAt": { "type": "string", "format": "date-time" },
+        "sourceSubmitterName": { "type": "string" },
+        "sourceSubmitterEmail": { "type": "string" },
+        "sourceCompanyText": { "type": "string" },
+        "sourceFounderText": { "type": "string" },
+        "sourceMeetingDate": { "type": "string", "format": "date-time" },
+        "sourceTopicText": { "type": "string" },
+        "sourceQuestionSetType": { "type": "string" },
+        "rawPayload": { "type": "object" },
+        "sourceHash": { "type": "string" },
+        "matchedCompanyId": { "type": "string" },
+        "matchedPersonId": { "type": "string" },
+        "matchConfidence": { "type": "string", "enum": ["high", "medium", "low", "unresolved"] },
+        "ingestionStatus": {
+          "type": "string",
+          "enum": ["received", "matched", "needs_review", "ready_to_normalize", "normalized", "ignored"]
+        },
+        "ingestionNotes": { "type": "string" },
+        "normalizedTargets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "targetType": {
+                "type": "string",
+                "enum": ["interview", "discovery_plan", "interview_guide", "evidence_artifact", "linked_note"]
+              },
+              "targetId": { "type": "string" },
+              "normalizedAt": { "type": "string", "format": "date-time" }
+            },
+            "required": ["targetType", "targetId", "normalizedAt"]
+          }
+        },
+        "matchedByPersonId": { "type": "string" },
+        "matchedAt": { "type": "string", "format": "date-time" },
+        "normalizedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "sourceSystem",
+        "sourceLane",
+        "sourceFormId",
+        "sourceFormTitle",
+        "sourceSubmissionId",
+        "rawPayload",
+        "sourceHash",
+        "matchConfidence",
+        "ingestionStatus",
+        "normalizedTargets",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ingestionReviewItem": {
+      "title": "Ingestion Review Item",
+      "description": "Staff review record for raw source submissions that are unresolved or awaiting normalization decisions.",
+      "type": "object",
+      "properties": {
+        "sourceSubmissionId": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "resolved"] },
+        "reviewReason": {
+          "type": "string",
+          "enum": [
+            "ambiguous_company_match",
+            "ambiguous_person_match",
+            "match_conflict",
+            "canonical_collision",
+            "weak_content",
+            "legacy_context",
+            "malformed_submission"
+          ]
+        },
+        "actionNeeded": { "type": "string" },
+        "proposedCompanyId": { "type": "string" },
+        "proposedPersonId": { "type": "string" },
+        "proposedConfidence": { "type": "string", "enum": ["high", "medium", "low", "unresolved"] },
+        "reviewedByPersonId": { "type": "string" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "resolutionType": {
+          "type": "string",
+          "enum": ["accept_proposed_match", "override_match", "ready_to_normalize", "mark_unresolved", "ignore"]
+        },
+        "resolutionNotes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "sourceSubmissionId",
+        "status",
+        "reviewReason",
+        "actionNeeded",
+        "proposedConfidence",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
     "interview": {
       "title": "Interview",
       "description": "Customer discovery interview record.",
@@ -444,6 +552,8 @@
     "/mentorAssignments/{assignmentId}": { "schema": "mentorAssignment", "description": "Mentor-company links." },
     "/meetingRequests/{meetingRequestId}": { "schema": "meetingRequest", "description": "Meeting requests." },
     "/feedback/{feedbackId}": { "schema": "feedback", "description": "Meeting notes and feedback." },
+    "/sourceSubmissions/{sourceSubmissionId}": { "schema": "sourceSubmission", "description": "Raw Airtable- and Jotform-origin source evidence before normalization." },
+    "/ingestionReviewQueue/{reviewItemId}": { "schema": "ingestionReviewItem", "description": "Staff review lane for unresolved or ambiguous source evidence." },
     "/interviews/{interviewId}": { "schema": "interview", "description": "Customer discovery interviews." },
     "/patterns/{patternId}": { "schema": "pattern", "description": "Synthesized problem patterns." },
     "/assumptions/{assumptionId}": { "schema": "assumption", "description": "Risky assumptions." },

@@ -118,6 +118,63 @@ export enum FeedbackRole {
   OM_STAFF = "om_staff"
 }
 
+export enum SourceSystem {
+  JOTFORM = "jotform",
+  AIRTABLE = "airtable",
+}
+
+export enum SourceSubmissionLane {
+  DISCOVERY_PLAN = "discovery_plan",
+  MEETING_NOTES = "meeting_notes",
+}
+
+export enum SourceMatchConfidence {
+  HIGH = "high",
+  MEDIUM = "medium",
+  LOW = "low",
+  UNRESOLVED = "unresolved",
+}
+
+export enum SourceIngestionStatus {
+  RECEIVED = "received",
+  MATCHED = "matched",
+  NEEDS_REVIEW = "needs_review",
+  READY_TO_NORMALIZE = "ready_to_normalize",
+  NORMALIZED = "normalized",
+  IGNORED = "ignored",
+}
+
+export enum IngestionReviewStatus {
+  OPEN = "open",
+  RESOLVED = "resolved",
+}
+
+export enum IngestionReviewReason {
+  AMBIGUOUS_COMPANY_MATCH = "ambiguous_company_match",
+  AMBIGUOUS_PERSON_MATCH = "ambiguous_person_match",
+  MATCH_CONFLICT = "match_conflict",
+  CANONICAL_COLLISION = "canonical_collision",
+  WEAK_CONTENT = "weak_content",
+  LEGACY_CONTEXT = "legacy_context",
+  MALFORMED_SUBMISSION = "malformed_submission",
+}
+
+export enum IngestionResolutionType {
+  ACCEPT_PROPOSED_MATCH = "accept_proposed_match",
+  OVERRIDE_MATCH = "override_match",
+  READY_TO_NORMALIZE = "ready_to_normalize",
+  MARK_UNRESOLVED = "mark_unresolved",
+  IGNORE = "ignore",
+}
+
+export enum NormalizedTargetType {
+  INTERVIEW = "interview",
+  DISCOVERY_PLAN = "discovery_plan",
+  INTERVIEW_GUIDE = "interview_guide",
+  EVIDENCE_ARTIFACT = "evidence_artifact",
+  LINKED_NOTE = "linked_note",
+}
+
 export enum PatternStatus {
   KEEP = "keep",
   NARROW = "narrow",
@@ -361,6 +418,87 @@ export interface Feedback {
   shareableProof?: string;
   internalNotes?: string;
   submittedAt: string;
+}
+
+export type SourcePayloadValue =
+  | string
+  | number
+  | boolean
+  | null
+  | SourcePayloadValue[]
+  | { [key: string]: SourcePayloadValue };
+
+export interface SourceSubmissionNormalizedTarget {
+  targetType: NormalizedTargetType;
+  targetId: string;
+  normalizedAt: string;
+}
+
+export interface SourceSubmission {
+  id: string;
+  sourceSystem: SourceSystem;
+  sourceLane: SourceSubmissionLane;
+  sourceFormId: string;
+  sourceFormTitle: string;
+  sourceSubmissionId: string;
+  sourceSubmittedAt?: string;
+  sourceUpdatedAt?: string;
+  sourceSubmitterName?: string;
+  sourceSubmitterEmail?: string;
+  sourceCompanyText?: string;
+  sourceFounderText?: string;
+  sourceMeetingDate?: string;
+  sourceTopicText?: string;
+  sourceQuestionSetType?: string;
+  rawPayload: Record<string, SourcePayloadValue>;
+  sourceHash: string;
+  matchedCompanyId?: string;
+  matchedPersonId?: string;
+  matchConfidence: SourceMatchConfidence;
+  ingestionStatus: SourceIngestionStatus;
+  ingestionNotes?: string;
+  normalizedTargets: SourceSubmissionNormalizedTarget[];
+  matchedByPersonId?: string;
+  matchedAt?: string;
+  normalizedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IngestionReviewItem {
+  id: string;
+  sourceSubmissionId: string;
+  status: IngestionReviewStatus;
+  reviewReason: IngestionReviewReason;
+  actionNeeded: string;
+  proposedCompanyId?: string;
+  proposedPersonId?: string;
+  proposedConfidence: SourceMatchConfidence;
+  reviewedByPersonId?: string;
+  reviewedAt?: string;
+  resolutionType?: IngestionResolutionType;
+  resolutionNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SourceMatchCandidate {
+  id: string;
+  label: string;
+  confidence: SourceMatchConfidence;
+  reason: string;
+}
+
+export interface SourceSubmissionMatchResult {
+  sourceSubmissionId: string;
+  companyCandidates: SourceMatchCandidate[];
+  personCandidates: SourceMatchCandidate[];
+  matchedCompanyId?: string;
+  matchedPersonId?: string;
+  matchConfidence: SourceMatchConfidence;
+  ingestionStatus: SourceIngestionStatus;
+  actionNeeded: string;
+  reviewReason?: IngestionReviewReason;
 }
 
 export interface Interview {

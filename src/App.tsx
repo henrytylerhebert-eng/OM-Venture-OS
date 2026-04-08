@@ -20,6 +20,7 @@ import Assumptions from './pages/Assumptions';
 import Experiments from './pages/Experiments';
 import Signals from './pages/Signals';
 import ReadinessQueue from './pages/ReadinessQueue';
+import EvidenceIntakeReview from './pages/EvidenceIntakeReview';
 import { RoleType } from './types';
 
 // Placeholder pages for other routes
@@ -58,6 +59,7 @@ export default function App() {
             >
               <Route index element={<AdminDashboard />} />
               <Route path="readiness" element={<ReadinessQueue />} />
+              <Route path="intake" element={<EvidenceIntakeReview />} />
               <Route path="copilot" element={<Copilot />} />
               <Route path="discovery" element={<DiscoveryInterviews />} />
               <Route path="patterns" element={<Patterns />} />

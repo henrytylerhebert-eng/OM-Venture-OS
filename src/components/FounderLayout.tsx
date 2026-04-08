@@ -35,25 +35,25 @@ const sections: ShellNavSection[] = [
         label: 'Interviews',
         path: '/founder/discovery',
         icon: MessageSquare,
-        description: 'Capture customer discovery with the quality signals the Builder program expects.',
+        description: 'Interview Capture is the first hard proof layer in Builder. Capture customer truth with the quality signals Opportunity Machine expects.',
       },
       {
-        label: 'Patterns',
+        label: 'Patterns & Assumptions',
         path: '/founder/patterns',
         icon: Brain,
-        description: 'Distill repeated truths instead of leaving interviews as raw notes.',
+        description: 'Turn interviews into repeated truth, ranked risk, and a persevere, narrow, or pivot decision before you design an MVP or test.',
       },
       {
-        label: 'Assumptions',
+        label: 'Assumption Stack',
         path: '/founder/assumptions',
         icon: Lightbulb,
-        description: 'Make your venture risks explicit and link them to evidence and tests.',
+        description: 'Drill into the weakest risks still needing proof so your next test is grounded in evidence.',
       },
       {
-        label: 'Experiments',
+        label: 'MVP / Test Design',
         path: '/founder/experiments',
         icon: FlaskConical,
-        description: 'Move from discovery into validation tests that unlock the next layer of support.',
+        description: 'Design the smallest test that helps you learn whether the weakest remaining assumption is true.',
       },
       {
         label: 'Signals',
@@ -70,7 +70,7 @@ const FounderLayout: React.FC = () => (
     tone="founder"
     eyebrow="Builder Workspace"
     title="Build proof before asking for more."
-    summary="This workspace should guide founders through Builder as a staged operating system: evidence, synthesis, validation, readiness, and earned support."
+    summary="This workspace should guide founders through Builder as a staged operating system: interview capture, synthesis, MVP or test design, live testing, readiness, and earned support."
     sections={sections}
   />
 );

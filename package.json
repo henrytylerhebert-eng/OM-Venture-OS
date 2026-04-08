@@ -12,7 +12,8 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "validate:patterns": "tsx scripts/validate-patterns.ts",
-    "validate:evidence-context": "tsx scripts/validate-company-evidence-context.ts"
+    "validate:evidence-context": "tsx scripts/validate-company-evidence-context.ts",
+    "validate:source-ingestion": "tsx scripts/validate-source-ingestion.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
