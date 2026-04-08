@@ -1,13 +1,16 @@
 import React from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
-import AdminDashboard from './AdminDashboard';
-import FounderDashboard from './FounderDashboard';
-import MentorDashboard from './MentorDashboard';
+import { getRoleHomePath } from '../lib/roleRouting';
 
 const Dashboard: React.FC = () => {
-  const { profile, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
 
   if (loading) return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
   if (!profile) {
     return (
@@ -20,16 +23,7 @@ const Dashboard: React.FC = () => {
     );
   }
 
-  switch (profile.role) {
-    case 'om_admin':
-    case 'om_staff':
-      return <AdminDashboard />;
-    case 'mentor':
-      return <MentorDashboard />;
-    case 'founder':
-    default:
-      return <FounderDashboard />;
-  }
+  return <Navigate to={getRoleHomePath(profile.role)} replace />;
 };
 
 export default Dashboard;

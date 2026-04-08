@@ -3,6 +3,7 @@ import { signInWithGoogle } from '../firebase';
 import { useNavigate } from 'react-router-dom';
 import { createUserProfile, getUserProfile } from '../services/authService';
 import { UserProfile, RoleType } from '../types';
+import { getRoleHomePath } from '../lib/roleRouting';
 
 const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -30,7 +31,7 @@ const Login: React.FC = () => {
         await createUserProfile(newProfile);
       }
       
-      navigate('/');
+      navigate(getRoleHomePath(existingProfile?.role || RoleType.FOUNDER));
     } catch (err) {
       console.error(err);
       setError('Failed to sign in. Please try again.');

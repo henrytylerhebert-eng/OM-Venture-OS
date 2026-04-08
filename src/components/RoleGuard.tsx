@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthProvider';
 import { RoleType } from '../types';
+import { getRoleHomePath } from '../lib/roleRouting';
 
 interface RoleGuardProps {
   children: React.ReactNode;
@@ -25,16 +26,7 @@ export const RoleGuard: React.FC<RoleGuardProps> = ({ children, allowedRoles }) 
   }
 
   if (!profile || !allowedRoles.includes(profile.role)) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center">
-        <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
-        <p className="text-gray-500 mt-2 max-w-md">
-          You do not have the required permissions to view this page. 
-          If you believe this is an error, please contact an OM administrator.
-        </p>
-        <Navigate to="/" replace />
-      </div>
-    );
+    return <Navigate to={getRoleHomePath(profile?.role)} replace />;
   }
 
   return <>{children}</>;

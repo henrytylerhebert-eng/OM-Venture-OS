@@ -2,9 +2,15 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './components/AuthProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RoleGuard } from './components/RoleGuard';
-import Layout from './components/Layout';
+import StaffLayout from './components/StaffLayout';
+import FounderLayout from './components/FounderLayout';
+import MentorLayout from './components/MentorLayout';
+import RolePathRedirect from './components/RolePathRedirect';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import AdminDashboard from './pages/AdminDashboard';
+import FounderDashboard from './pages/FounderDashboard';
+import MentorDashboard from './pages/MentorDashboard';
 import SeedData from './pages/SeedData';
 import QAPage from './pages/QAPage';
 import Copilot from './pages/Copilot';
@@ -14,6 +20,7 @@ import Assumptions from './pages/Assumptions';
 import Experiments from './pages/Experiments';
 import Signals from './pages/Signals';
 import ReadinessQueue from './pages/ReadinessQueue';
+import { RoleType } from './types';
 
 // Placeholder pages for other routes
 const Placeholder = ({ title }: { title: string }) => (
@@ -29,98 +36,84 @@ export default function App() {
       <AuthProvider>
         <Router>
           <Routes>
+            <Route path="/" element={<Dashboard />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/seed" element={<SeedData />} />
+            <Route
+              path="/seed"
+              element={
+                <RoleGuard allowedRoles={[RoleType.OM_ADMIN]}>
+                  <SeedData />
+                </RoleGuard>
+              }
+            />
             <Route path="/qa" element={<QAPage />} />
-            
-            <Route path="/" element={<Layout />}>
-              <Route index element={<Dashboard />} />
-              
-              {/* Admin & Staff Only */}
-              <Route 
-                path="companies" 
-                element={
-                  <RoleGuard allowedRoles={['om_admin', 'om_staff']}>
-                    <Placeholder title="Companies Management" />
-                  </RoleGuard>
-                } 
-              />
-              <Route 
-                path="cohorts" 
-                element={
-                  <RoleGuard allowedRoles={['om_admin', 'om_staff']}>
-                    <Placeholder title="Cohorts Management" />
-                  </RoleGuard>
-                } 
-              />
-              <Route 
-                path="mentors" 
-                element={
-                  <RoleGuard allowedRoles={['om_admin', 'om_staff']}>
-                    <Placeholder title="Mentors Management" />
-                  </RoleGuard>
-                } 
-              />
-              <Route 
-                path="readiness" 
-                element={
-                  <RoleGuard allowedRoles={['om_admin', 'om_staff']}>
-                    <ReadinessQueue />
-                  </RoleGuard>
-                } 
-              />
-              
-              {/* Common Routes */}
-              <Route 
-                path="copilot"
-                element={
-                  <RoleGuard allowedRoles={['founder', 'om_admin', 'om_staff', 'mentor']}>
-                    <Copilot />
-                  </RoleGuard>
-                }
-              />
-              <Route 
-                path="discovery" 
-                element={
-                  <RoleGuard allowedRoles={['founder', 'om_admin', 'om_staff', 'mentor']}>
-                    <DiscoveryInterviews />
-                  </RoleGuard>
-                } 
-              />
-              <Route 
-                path="patterns" 
-                element={
-                  <RoleGuard allowedRoles={['founder', 'om_admin', 'om_staff', 'mentor']}>
-                    <Patterns />
-                  </RoleGuard>
-                } 
-              />
-              <Route 
-                path="assumptions" 
-                element={
-                  <RoleGuard allowedRoles={['founder', 'om_admin', 'om_staff', 'mentor']}>
-                    <Assumptions />
-                  </RoleGuard>
-                } 
-              />
-              <Route 
-                path="experiments" 
-                element={
-                  <RoleGuard allowedRoles={['founder', 'om_admin', 'om_staff', 'mentor']}>
-                    <Experiments />
-                  </RoleGuard>
-                } 
-              />
-              <Route 
-                path="signals" 
-                element={
-                  <RoleGuard allowedRoles={['founder', 'om_admin', 'om_staff', 'mentor']}>
-                    <Signals />
-                  </RoleGuard>
-                } 
-              />
-              <Route path="profile" element={<Placeholder title="My Profile" />} />
+
+            <Route
+              path="/staff"
+              element={
+                <RoleGuard allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF]}>
+                  <StaffLayout />
+                </RoleGuard>
+              }
+            >
+              <Route index element={<AdminDashboard />} />
+              <Route path="readiness" element={<ReadinessQueue />} />
+              <Route path="copilot" element={<Copilot />} />
+              <Route path="discovery" element={<DiscoveryInterviews />} />
+              <Route path="patterns" element={<Patterns />} />
+              <Route path="assumptions" element={<Assumptions />} />
+              <Route path="experiments" element={<Experiments />} />
+              <Route path="signals" element={<Signals />} />
+              <Route path="profile" element={<Placeholder title="Staff Profile" />} />
             </Route>
+
+            <Route
+              path="/founder"
+              element={
+                <RoleGuard allowedRoles={[RoleType.FOUNDER, RoleType.STARTUP_TEAM]}>
+                  <FounderLayout />
+                </RoleGuard>
+              }
+            >
+              <Route index element={<FounderDashboard />} />
+              <Route path="copilot" element={<Copilot />} />
+              <Route path="discovery" element={<DiscoveryInterviews />} />
+              <Route path="patterns" element={<Patterns />} />
+              <Route path="assumptions" element={<Assumptions />} />
+              <Route path="experiments" element={<Experiments />} />
+              <Route path="signals" element={<Signals />} />
+              <Route path="profile" element={<Placeholder title="Founder Profile" />} />
+            </Route>
+
+            <Route
+              path="/mentor"
+              element={
+                <RoleGuard allowedRoles={[RoleType.MENTOR]}>
+                  <MentorLayout />
+                </RoleGuard>
+              }
+            >
+              <Route index element={<MentorDashboard />} />
+              <Route path="copilot" element={<Copilot />} />
+              <Route path="discovery" element={<DiscoveryInterviews />} />
+              <Route path="patterns" element={<Patterns />} />
+              <Route path="assumptions" element={<Assumptions />} />
+              <Route path="experiments" element={<Experiments />} />
+              <Route path="signals" element={<Signals />} />
+              <Route path="profile" element={<Placeholder title="Mentor Profile" />} />
+            </Route>
+
+            <Route path="/copilot" element={<RolePathRedirect segment="copilot" allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF, RoleType.FOUNDER, RoleType.STARTUP_TEAM, RoleType.MENTOR]} />} />
+            <Route path="/discovery" element={<RolePathRedirect segment="discovery" allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF, RoleType.FOUNDER, RoleType.STARTUP_TEAM, RoleType.MENTOR]} />} />
+            <Route path="/patterns" element={<RolePathRedirect segment="patterns" allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF, RoleType.FOUNDER, RoleType.STARTUP_TEAM, RoleType.MENTOR]} />} />
+            <Route path="/assumptions" element={<RolePathRedirect segment="assumptions" allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF, RoleType.FOUNDER, RoleType.STARTUP_TEAM, RoleType.MENTOR]} />} />
+            <Route path="/experiments" element={<RolePathRedirect segment="experiments" allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF, RoleType.FOUNDER, RoleType.STARTUP_TEAM, RoleType.MENTOR]} />} />
+            <Route path="/signals" element={<RolePathRedirect segment="signals" allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF, RoleType.FOUNDER, RoleType.STARTUP_TEAM, RoleType.MENTOR]} />} />
+            <Route path="/readiness" element={<RolePathRedirect segment="readiness" allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF]} />} />
+            <Route path="/companies" element={<RolePathRedirect />} />
+            <Route path="/cohorts" element={<RolePathRedirect />} />
+            <Route path="/mentors" element={<RolePathRedirect />} />
+            <Route path="/profile" element={<RolePathRedirect />} />
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
