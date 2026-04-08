@@ -1,73 +1,63 @@
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../components/AuthProvider';
-import { getCompanies, createCompany } from '../services/companyService';
-import { submitApplication, getApplications, getCohorts } from '../services/cohortService';
-import { 
-  getInterviews, 
-  createInterview, 
-  getAssumptions, 
-  createAssumption, 
-  updateAssumption, 
-  getExperiments, 
-  createExperiment, 
-  getSignals, 
-  createSignal,
-  getPatterns
-} from '../services/evidenceService';
-import { getReadinessReviews } from '../services/progressService';
-import { 
-  Company, 
-  CohortApplication, 
-  Cohort,
-  Interview, 
-  Assumption, 
-  Experiment, 
-  Signal, 
-  ReadinessReview,
-  Pattern,
-  AssumptionType,
-  ReadinessType,
-  ReadinessStatus,
-  MembershipStatus,
-  DecisionStatus,
-  AssumptionStatus,
-  TestType
-} from '../types';
 import { Link } from 'react-router-dom';
-import { 
-  Rocket, 
-  CheckCircle2, 
-  Clock, 
-  Plus, 
-  Building, 
-  MessageSquare, 
-  Lightbulb, 
-  FlaskConical, 
-  Signal as SignalIcon, 
-  ShieldCheck,
-  ChevronRight,
-  AlertCircle,
-  Brain
-} from 'lucide-react';
-import { format } from 'date-fns';
 import { where } from 'firebase/firestore';
-import { cn } from '../lib/utils';
-
-type Tab = 'overview' | 'interviews' | 'patterns' | 'assumptions' | 'experiments' | 'signals' | 'readiness';
+import {
+  AlertCircle,
+  ArrowRight,
+  Brain,
+  Building,
+  CheckCircle2,
+  Clock3,
+  FlaskConical,
+  Lightbulb,
+  MessageSquare,
+  Plus,
+  Signal as SignalIcon,
+} from 'lucide-react';
+import { useAuth } from '../components/AuthProvider';
+import { createCompany, getCompanies } from '../services/companyService';
+import { getApplications, getCohorts, submitApplication } from '../services/cohortService';
+import {
+  getAssumptions,
+  getExperiments,
+  getInterviews,
+  getPatterns,
+  getSignals,
+} from '../services/evidenceService';
+import { getMentorAssignments } from '../services/mentorService';
+import { getPortfolioProgress, getReadinessReviews } from '../services/progressService';
+import {
+  Assumption,
+  AssignmentStatus,
+  Cohort,
+  CohortApplication,
+  Company,
+  DecisionStatus,
+  Experiment,
+  Interview,
+  MembershipStatus,
+  MentorAssignment,
+  Pattern,
+  PortfolioProgress,
+  ReadinessReview,
+  ReadinessStatus,
+  ReadinessType,
+  Signal,
+} from '../types';
+import { buildCompanyOperatingInsight } from '../lib/companyInsights';
+import { getRoleScopedPath } from '../lib/roleRouting';
 
 const FounderDashboard: React.FC = () => {
-  const { profile, loading: authLoading } = useAuth();
+  const { profile } = useAuth();
   const [myCompanies, setMyCompanies] = useState<Company[]>([]);
   const [myApplications, setMyApplications] = useState<CohortApplication[]>([]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [portfolioProgress, setPortfolioProgress] = useState<PortfolioProgress[]>([]);
+  const [mentorAssignments, setMentorAssignments] = useState<MentorAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateCompany, setShowCreateCompany] = useState(false);
   const [newCompanyName, setNewCompanyName] = useState('');
-  
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
-
-  // Evidence State
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [assumptions, setAssumptions] = useState<Assumption[]>([]);
@@ -76,32 +66,42 @@ const FounderDashboard: React.FC = () => {
   const [readinessReviews, setReadinessReviews] = useState<ReadinessReview[]>([]);
 
   useEffect(() => {
-    if (!profile?.personId) return;
-    
-    const unsubCompanies = getCompanies((all) => {
-      const filtered = all.filter(c => c.founderLeadPersonId === profile.personId);
-      setMyCompanies(filtered);
-      if (filtered.length > 0 && !selectedCompanyId) {
-        setSelectedCompanyId(filtered[0].id);
-      }
+    if (!profile?.personId) {
+      return undefined;
+    }
+
+    const unsubCompanies = getCompanies((allCompanies) => {
+      const filteredCompanies = allCompanies.filter(
+        (company) => company.founderLeadPersonId === profile.personId
+      );
+      setMyCompanies(filteredCompanies);
+      setSelectedCompanyId((current) => current || filteredCompanies[0]?.id || null);
+      setLoading(false);
     });
 
-    const unsubApps = getApplications((all) => {
-      setMyApplications(all.filter(a => a.founderPersonId === profile.personId));
-    }, [where('founderPersonId', '==', profile.personId)]);
-
+    const unsubApplications = getApplications(
+      (applications) => {
+        setMyApplications(applications.filter((application) => application.founderPersonId === profile.personId));
+      },
+      [where('founderPersonId', '==', profile.personId)]
+    );
     const unsubCohorts = getCohorts(setCohorts);
+    const unsubProgress = getPortfolioProgress(setPortfolioProgress);
+    const unsubMentorAssignments = getMentorAssignments(setMentorAssignments);
 
-    setLoading(false);
     return () => {
       unsubCompanies();
-      unsubApps();
+      unsubApplications();
       unsubCohorts();
+      unsubProgress();
+      unsubMentorAssignments();
     };
   }, [profile?.personId]);
 
   useEffect(() => {
-    if (!selectedCompanyId) return;
+    if (!selectedCompanyId) {
+      return undefined;
+    }
 
     const unsubInterviews = getInterviews(setInterviews, selectedCompanyId);
     const unsubPatterns = getPatterns(setPatterns, selectedCompanyId);
@@ -120,11 +120,13 @@ const FounderDashboard: React.FC = () => {
     };
   }, [selectedCompanyId]);
 
-  const handleCreateCompany = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!profile?.personId || !newCompanyName) return;
-    
-    const id = await createCompany({
+  const handleCreateCompany = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!profile?.personId || !newCompanyName) {
+      return;
+    }
+
+    const companyId = await createCompany({
       name: newCompanyName,
       organizationId: 'default-org',
       founderLeadPersonId: profile.personId,
@@ -132,19 +134,20 @@ const FounderDashboard: React.FC = () => {
       membershipStatus: MembershipStatus.PENDING,
       active: true,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     });
-    
-    setSelectedCompanyId(id);
+
+    setSelectedCompanyId(companyId);
     setNewCompanyName('');
     setShowCreateCompany(false);
   };
 
   const handleApplyToCohort = async (companyId: string) => {
-    if (!profile?.personId || cohorts.length === 0) return;
-    
-    // For demo, apply to the first active cohort
-    const activeCohort = cohorts.find(c => c.status === 'active') || cohorts[0];
+    if (!profile?.personId || cohorts.length === 0) {
+      return;
+    }
+
+    const activeCohort = cohorts.find((cohort) => cohort.status === 'active') || cohorts[0];
 
     await submitApplication({
       companyId,
@@ -152,511 +155,383 @@ const FounderDashboard: React.FC = () => {
       requestedCohortId: activeCohort.id,
       decision: DecisionStatus.PENDING,
       submittedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     });
   };
 
-  if (loading) return <div>Loading...</div>;
+  const selectedCompany = myCompanies.find((company) => company.id === selectedCompanyId);
+  const selectedInsight =
+    selectedCompany &&
+    buildCompanyOperatingInsight({
+      interviews,
+      patterns,
+      assumptions,
+      experiments,
+      signals,
+      reviews: readinessReviews,
+      progress: portfolioProgress.find((progress) => progress.companyId === selectedCompany.id),
+      mentorAssignments: mentorAssignments.filter(
+        (assignment) =>
+          assignment.companyId === selectedCompany.id && assignment.status === AssignmentStatus.ACTIVE
+      ),
+    });
+  const selectedApplication = myApplications.find((application) => application.companyId === selectedCompanyId);
+  const activeCohort = cohorts.find((cohort) => cohort.status === 'active') || cohorts[0];
 
-  const selectedCompany = myCompanies.find(c => c.id === selectedCompanyId);
+  const evidenceLinks = selectedCompany
+    ? [
+        {
+          label: 'Customer discovery',
+          path: getRoleScopedPath(profile?.role, 'discovery'),
+          description: 'Interviews that count toward the Builder minimum and surface real pain.',
+          count: selectedInsight?.countedInterviews || 0,
+          icon: MessageSquare,
+        },
+        {
+          label: 'Patterns',
+          path: getRoleScopedPath(profile?.role, 'patterns'),
+          description: 'Repeated truths that turn interview notes into evidence.',
+          count: selectedInsight?.strongPatternCount || 0,
+          icon: Brain,
+        },
+        {
+          label: 'Assumptions',
+          path: getRoleScopedPath(profile?.role, 'assumptions'),
+          description: 'Risks that still need proof before you build or fundraise.',
+          count: selectedInsight?.assumptionCount || 0,
+          icon: Lightbulb,
+        },
+        {
+          label: 'Experiments',
+          path: getRoleScopedPath(profile?.role, 'experiments'),
+          description: 'Tests that move you beyond discovery and into validation.',
+          count: selectedInsight?.experimentCount || 0,
+          icon: FlaskConical,
+        },
+        {
+          label: 'Signals',
+          path: getRoleScopedPath(profile?.role, 'signals'),
+          description: 'Measurable traction that proves the test is becoming real.',
+          count: selectedInsight?.tractionSignalCount || 0,
+          icon: SignalIcon,
+        },
+      ]
+    : [];
+
+  if (loading) {
+    return <div className="p-8 text-sm text-slate-500">Loading builder workspace...</div>;
+  }
 
   return (
     <div className="space-y-8">
-      <header className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Founder Dashboard</h1>
-          <p className="text-gray-500">Track your startup's progress and evidence.</p>
+      <header className="space-y-3">
+        <div className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-sky-800">
+          Builder Workspace
         </div>
-        <div className="flex gap-3">
-          {myCompanies.length > 0 && (
-            <select 
-              value={selectedCompanyId || ''} 
-              onChange={(e) => setSelectedCompanyId(e.target.value)}
-              className="border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Build proof before asking for more support.</h1>
+            <p className="max-w-3xl text-sm leading-6 text-slate-600">
+              This workspace follows Builder as an operating system: customer truth, synthesis, testing, readiness, and earned support. It is not just a place to store notes.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {myCompanies.length > 0 && (
+              <select
+                value={selectedCompanyId || ''}
+                onChange={(event) => setSelectedCompanyId(event.target.value)}
+                className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-slate-400 focus:outline-none"
+              >
+                {myCompanies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button
+              onClick={() => setShowCreateCompany(true)}
+              className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
             >
-              {myCompanies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          )}
-          <button 
-            onClick={() => setShowCreateCompany(true)}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 flex items-center"
-          >
-            <Plus className="h-4 w-4 mr-1" /> New Startup
-          </button>
+              <Plus className="h-4 w-4" />
+              New Startup
+            </button>
+          </div>
         </div>
       </header>
 
       {showCreateCompany && (
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-indigo-100">
-          <h3 className="text-lg font-semibold mb-4">Register New Startup</h3>
-          <form onSubmit={handleCreateCompany} className="flex gap-4">
-            <input 
-              type="text" 
+        <div className="rounded-[28px] border border-sky-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-950">Register a startup</h2>
+          <p className="mt-1 text-sm text-slate-500">Start a Builder workspace for a founder company before tracking proof.</p>
+          <form onSubmit={handleCreateCompany} className="mt-5 flex flex-col gap-4 sm:flex-row">
+            <input
+              type="text"
               value={newCompanyName}
-              onChange={(e) => setNewCompanyName(e.target.value)}
-              placeholder="Company Name"
-              className="flex-1 border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+              onChange={(event) => setNewCompanyName(event.target.value)}
+              placeholder="Company name"
+              className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-slate-400 focus:outline-none"
               required
             />
-            <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">Create</button>
-            <button type="button" onClick={() => setShowCreateCompany(false)} className="text-gray-500 px-4 py-2 hover:text-gray-700">Cancel</button>
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+              >
+                Create workspace
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCreateCompany(false)}
+                className="rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
           </form>
         </div>
       )}
 
-      {selectedCompany ? (
-        <div className="space-y-6">
-          {/* Tabs */}
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
-              {[
-                { id: 'overview', label: 'Overview', icon: Rocket },
-                { id: 'interviews', label: 'Interviews', icon: MessageSquare },
-                { id: 'patterns', label: 'Patterns', icon: Brain },
-                { id: 'assumptions', label: 'Assumptions', icon: Lightbulb },
-                { id: 'experiments', label: 'Experiments', icon: FlaskConical },
-                { id: 'signals', label: 'Signals', icon: SignalIcon },
-                { id: 'readiness', label: 'Readiness', icon: ShieldCheck },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as Tab)}
-                  className={cn(
-                    "group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-all",
-                    activeTab === tab.id
-                      ? "border-indigo-500 text-indigo-600"
-                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                  )}
-                >
-                  <tab.icon className={cn(
-                    "mr-2 h-5 w-5",
-                    activeTab === tab.id ? "text-indigo-500" : "text-gray-400 group-hover:text-gray-500"
-                  )} />
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
-          </div>
+      {selectedCompany && selectedInsight ? (
+        <>
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Interviews Counted</p>
+              <p className="mt-3 text-3xl font-semibold text-slate-950">{selectedInsight.countedInterviews}</p>
+              <p className="mt-2 text-sm text-slate-500">Builder asks for at least 15, with stronger support closer to 50.</p>
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Strong Pain Signals</p>
+              <p className="mt-3 text-3xl font-semibold text-slate-950">{selectedInsight.highPainInterviewCount}</p>
+              <p className="mt-2 text-sm text-slate-500">Interviews that surfaced strong customer pain, not polite agreement.</p>
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Validation Tests</p>
+              <p className="mt-3 text-3xl font-semibold text-slate-950">{selectedInsight.experimentCount}</p>
+              <p className="mt-2 text-sm text-slate-500">Builder expects testing beyond discovery before build-heavy support unlocks.</p>
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Traction Signals</p>
+              <p className="mt-3 text-3xl font-semibold text-slate-950">{selectedInsight.tractionSignalCount}</p>
+              <p className="mt-2 text-sm text-slate-500">Measured signs that validation is becoming real in the market.</p>
+            </div>
+          </section>
 
-          {/* Tab Content */}
-          <div className="min-h-[400px]">
-            {activeTab === 'overview' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 space-y-6">
-                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                    <div className="flex justify-between items-start mb-6">
-                      <div>
-                        <h3 className="text-xl font-bold text-gray-900">{selectedCompany.name}</h3>
-                        <p className="text-sm text-gray-500 mt-1">{selectedCompany.membershipStatus}</p>
+          <section className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h2 className="text-2xl font-semibold text-slate-950">{selectedCompany.name}</h2>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-700">
+                      {selectedInsight.stageLabel}
+                    </span>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 ring-1 ring-slate-200">
+                      membership: {selectedCompany.membershipStatus || 'unknown'}
+                    </span>
+                  </div>
+                  <p className="max-w-2xl text-sm leading-6 text-slate-600">
+                    {selectedInsight.nextMilestone}
+                  </p>
+                </div>
+                {selectedInsight.recordedProgressScore !== undefined && (
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3 text-right">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recorded Progress</p>
+                    <p className="mt-1 text-2xl font-semibold text-slate-950">{selectedInsight.recordedProgressScore}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <div className="rounded-3xl bg-sky-50 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">This Week In Builder</p>
+                  <ul className="mt-4 space-y-3">
+                    {selectedInsight.weeklyPriorities.map((priority) => (
+                      <li key={priority} className="flex gap-3 text-sm leading-6 text-slate-700">
+                        <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-sky-600" />
+                        <span>{priority}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="rounded-3xl bg-slate-50 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Most Important Missing Proof</p>
+                  <div className="mt-4 space-y-3">
+                    {selectedInsight.proofGaps.length > 0 ? (
+                      selectedInsight.proofGaps.slice(0, 3).map((gap) => (
+                        <div key={gap} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                          {gap}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                        Current proof clears the next unlock threshold. Use staff support to move the next decision forward.
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                        selectedCompany.active ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {selectedCompany.active ? 'ACTIVE' : 'INACTIVE'}
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="rounded-[28px] border border-emerald-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-slate-950">Support Available Now</h2>
+                <p className="mt-1 text-sm text-slate-500">Support you have earned from the proof already in the system.</p>
+                <div className="mt-5 space-y-3">
+                  {selectedInsight.availableResources.length > 0 ? (
+                    selectedInsight.availableResources.map((resource) => (
+                      <div key={resource.key} className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                        <p className="text-sm font-semibold text-emerald-900">{resource.name}</p>
+                        <p className="mt-1 text-sm text-emerald-800/80">{resource.description}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                      No support pathways are open yet. Keep building the proof listed below.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-slate-950">Still Locked</h2>
+                <p className="mt-1 text-sm text-slate-500">What support still waits on more evidence.</p>
+                <div className="mt-5 space-y-3">
+                  {selectedInsight.lockedResources.slice(0, 4).map((resource) => (
+                    <div key={resource.key} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <p className="text-sm font-semibold text-slate-900">{resource.name}</p>
+                      <p className="mt-1 text-sm text-slate-600">{resource.missingProof[0]}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="grid gap-6 xl:grid-cols-[1.2fr_0.9fr]">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-950">Evidence Workflow</h2>
+                  <p className="mt-1 text-sm text-slate-500">Open the Builder surfaces that move proof forward this week.</p>
+                </div>
+              </div>
+              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {evidenceLinks.map((item) => (
+                  <Link
+                    key={item.label}
+                    to={item.path}
+                    className="group rounded-3xl border border-slate-200 bg-slate-50 p-5 transition-colors hover:border-slate-300 hover:bg-white"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <item.icon className="h-5 w-5 text-slate-500" />
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 ring-1 ring-slate-200">
+                        {item.count}
                       </span>
                     </div>
-                    
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="p-4 bg-gray-50 rounded-lg text-center">
-                        <p className="text-xs text-gray-500 uppercase font-bold">Interviews</p>
-                        <p className="text-xl font-bold text-gray-900">{interviews.length}</p>
-                      </div>
-                      <div className="p-4 bg-gray-50 rounded-lg text-center">
-                        <p className="text-xs text-gray-500 uppercase font-bold">Assumptions</p>
-                        <p className="text-xl font-bold text-gray-900">{assumptions.length}</p>
-                      </div>
-                      <div className="p-4 bg-gray-50 rounded-lg text-center">
-                        <p className="text-xs text-gray-500 uppercase font-bold">Experiments</p>
-                        <p className="text-xl font-bold text-gray-900">{experiments.length}</p>
-                      </div>
-                      <div className="p-4 bg-gray-50 rounded-lg text-center">
-                        <p className="text-xs text-gray-500 uppercase font-bold">Signals</p>
-                        <p className="text-xl font-bold text-gray-900">{signals.length}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                    <h4 className="text-sm font-bold text-gray-900 mb-4">Latest Signals</h4>
-                    <div className="space-y-3">
-                      {signals.slice(0, 3).map(s => (
-                        <div key={s.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
-                          <div className="flex items-center">
-                            <div className="bg-indigo-100 p-2 rounded mr-3">
-                              <SignalIcon className="h-4 w-4 text-indigo-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-gray-900">Traction Signal</p>
-                              <p className="text-xs text-gray-500">{format(new Date(s.signalDate), 'MMM d, yyyy')}</p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            {s.revenue > 0 && <p className="text-sm font-bold text-green-600">${s.revenue}</p>}
-                            {s.waitlistSignups > 0 && <p className="text-sm font-bold text-gray-900">{s.waitlistSignups} Signups</p>}
-                          </div>
-                        </div>
-                      ))}
-                      {signals.length === 0 && <p className="text-sm text-gray-500 italic">No signals logged yet.</p>}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="bg-indigo-600 p-6 rounded-lg shadow-sm text-white">
-                    <h4 className="text-lg font-bold mb-2">Next Milestone</h4>
-                    <p className="text-indigo-100 text-sm mb-6">Complete discovery phase by logging at least 10 interviews with a pain intensity {'>'} 4.</p>
-                    <button 
-                      onClick={() => handleApplyToCohort(selectedCompany.id)}
-                      disabled={myApplications.some(a => a.companyId === selectedCompany.id && a.decision === 'pending')}
-                      className="w-full bg-white text-indigo-600 py-2 rounded-md text-sm font-bold hover:bg-indigo-50 transition-colors disabled:opacity-50"
-                    >
-                      Request Cohort Review
-                    </button>
-                  </div>
-
-                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                    <h4 className="text-sm font-bold text-gray-900 mb-4">Readiness Status</h4>
-                    <div className="space-y-4">
-                      {['builder_completion', 'mentor_ready', 'intern_ready', 'pitch_ready', 'investor_ready'].map(type => {
-                        const review = readinessReviews.find(r => r.reviewType === type);
-                        return (
-                          <div key={type} className="flex items-center justify-between">
-                            <span className="text-sm text-gray-600 capitalize">{type.replace('_', ' ')}</span>
-                            {review?.status === 'ready' ? (
-                              <CheckCircle2 className="h-5 w-5 text-green-500" />
-                            ) : review?.status === 'not_ready' ? (
-                              <AlertCircle className="h-5 w-5 text-red-500" />
-                            ) : (
-                              <Clock className="h-5 w-5 text-gray-300" />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'interviews' && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-bold text-gray-900">Discovery Interviews</h3>
-                  <div className="flex items-center space-x-4">
-                    <Link to="/discovery" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center">
-                      Manage All <ChevronRight className="h-4 w-4 ml-1" />
-                    </Link>
-                    <button 
-                    onClick={async () => {
-                      if (!profile?.personId || !selectedCompanyId) return;
-                      await createInterview({
-                        companyId: selectedCompanyId,
-                        interviewerPersonId: profile?.personId || 'unknown',
-                        intervieweeName: 'New Contact',
-                        intervieweeSegment: 'Early Adopter',
-                        interviewSource: 'LinkedIn',
-                        interviewDate: new Date().toISOString(),
-                        problemTheme: 'Efficiency',
-                        painIntensity: 4,
-                        mentionSpontaneous: true,
-                        currentAlternative: 'Manual spreadsheets',
-                        bestQuote: 'This would save me 10 hours a week.',
-                        followUpNeeded: true,
-                        notes: '',
-                        countsTowardMinimum: true,
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString()
-                      });
-                    }}
-                    className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 flex items-center"
-                  >
-                    <Plus className="h-4 w-4 mr-1" /> Log Interview
-                  </button>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {interviews.map(i => (
-                    <div key={i.id} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                      <div className="flex justify-between mb-2">
-                        <span className="text-xs font-bold text-indigo-600 uppercase">{i.intervieweeSegment}</span>
-                        <span className="text-xs text-gray-500">{format(new Date(i.interviewDate || i.date || ''), 'MMM d')}</span>
-                      </div>
-                      <p className="text-sm text-gray-900 font-medium italic mb-3">"{i.bestQuote}"</p>
-                      <div className="flex items-center justify-between text-xs text-gray-500">
-                        <span>Pain: <span className="font-bold text-gray-900">{i.painIntensity}/5</span></span>
-                        <span>Alt: <span className="font-bold text-gray-900">{i.currentAlternative}</span></span>
-                      </div>
-                    </div>
-                  ))}
-                  {interviews.length === 0 && (
-                    <div className="col-span-full py-12 text-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                      <MessageSquare className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500">No interviews logged yet. Start discovery to validate your problem.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'patterns' && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-bold text-gray-900">Problem Patterns</h3>
-                  <Link to="/patterns" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center">
-                    Manage All <ChevronRight className="h-4 w-4 ml-1" />
+                    <h3 className="mt-4 text-base font-semibold text-slate-950">{item.label}</h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
+                    <span className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      Open workspace
+                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                    </span>
                   </Link>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {patterns.map(p => (
-                    <div key={p.id} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                      <div className="flex justify-between mb-2">
-                        <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">{p.status}</span>
-                        <span className="text-xs text-gray-500">{p.confidence} confidence</span>
-                      </div>
-                      <h4 className="text-sm font-bold text-gray-900 mb-2">{p.problemTheme}</h4>
-                      <div className="flex items-center gap-4 text-xs text-gray-500">
-                        <span>Mentions: <span className="font-bold text-gray-900">{p.numberOfMentions}</span></span>
-                        <span>Avg Pain: <span className="font-bold text-gray-900">{p.averagePainIntensity}/5</span></span>
-                      </div>
-                    </div>
-                  ))}
-                  {patterns.length === 0 && (
-                    <div className="col-span-full py-12 text-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                      <Brain className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500">No patterns identified yet. Synthesize your interviews to find themes.</p>
-                    </div>
-                  )}
-                </div>
+                ))}
               </div>
-            )}
+            </div>
 
-            {activeTab === 'assumptions' && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-bold text-gray-900">Risky Assumptions</h3>
-                  <div className="flex items-center space-x-4">
-                    <Link to="/assumptions" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center">
-                      Manage All <ChevronRight className="h-4 w-4 ml-1" />
-                    </Link>
-                    <button 
-                    onClick={async () => {
-                      if (!selectedCompanyId) return;
-                      await createAssumption({
-                        companyId: selectedCompanyId,
-                        statement: 'Users will pay $50/mo for this service.',
-                        type: AssumptionType.VIABILITY,
-                        importanceScore: 9,
-                        evidenceScore: 2,
-                        priorityScore: 11,
-                        status: AssumptionStatus.UNKNOWN,
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString()
-                      });
-                    }}
-                    className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 flex items-center"
-                  >
-                    <Plus className="h-4 w-4 mr-1" /> Add Assumption
-                  </button>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {assumptions.map(a => (
-                    <div key={a.id} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className={cn(
-                          "p-2 rounded-lg",
-                          a.type === 'desirability' ? "bg-blue-50 text-blue-600" :
-                          a.type === 'feasibility' ? "bg-green-50 text-green-600" : "bg-purple-50 text-purple-600"
-                        )}>
-                          <Lightbulb className="h-5 w-5" />
-                        </div>
-                        <span className={cn(
-                          "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
-                          a.status === 'validated' ? "bg-green-100 text-green-700" :
-                          a.status === 'invalidated' ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
-                        )}>
-                          {a.status}
-                        </span>
-                      </div>
-                      <p className="text-sm font-bold text-gray-900 mb-3 line-clamp-2">{a.statement}</p>
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-[10px] font-medium text-gray-500">
-                          <span>Evidence Strength</span>
-                          <span>{a.evidenceScore}/10</span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-1">
-                          <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${(a.evidenceScore / 10) * 100}%` }}></div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {assumptions.length === 0 && (
-                    <div className="col-span-full py-12 text-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                      <Lightbulb className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500">No risky assumptions mapped yet. What must be true for your business to work?</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            <div className="space-y-6">
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-slate-950">Readiness Signals</h2>
+                <p className="mt-1 text-sm text-slate-500">Official reviews stay separate from stage and membership.</p>
+                <div className="mt-5 space-y-4">
+                  {[
+                    ReadinessType.BUILDER_COMPLETION,
+                    ReadinessType.MENTOR_READY,
+                    ReadinessType.INTERN_READY,
+                    ReadinessType.PITCH_READY,
+                    ReadinessType.INVESTOR_READY,
+                  ].map((reviewType) => {
+                    const review = selectedInsight.readinessByType[reviewType];
+                    const icon =
+                      review?.status === ReadinessStatus.READY ? (
+                        <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                      ) : review?.status === ReadinessStatus.NOT_READY ||
+                        review?.status === ReadinessStatus.NEEDS_WORK ? (
+                        <AlertCircle className="h-5 w-5 text-rose-500" />
+                      ) : (
+                        <Clock3 className="h-5 w-5 text-slate-300" />
+                      );
 
-            {activeTab === 'experiments' && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-bold text-gray-900">Validation Experiments</h3>
-                  <div className="flex items-center space-x-4">
-                    <Link to="/experiments" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center">
-                      Manage All <ChevronRight className="h-4 w-4 ml-1" />
-                    </Link>
-                    <button 
-                    onClick={async () => {
-                      if (!selectedCompanyId) return;
-                      await createExperiment({
-                        companyId: selectedCompanyId,
-                        hypothesis: 'If we offer a free trial, 20% will sign up.',
-                        testType: TestType.LANDING_PAGE,
-                        channel: 'LinkedIn',
-                        offer: 'Free Trial',
-                        successMetric: 'Conversion Rate',
-                        active: true,
-                        startDate: new Date().toISOString(),
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString()
-                      });
-                    }}
-                    className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 flex items-center"
-                  >
-                    <Plus className="h-4 w-4 mr-1" /> New Experiment
-                  </button>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {experiments.map(e => (
-                    <div key={e.id} className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                      <div className="flex justify-between items-start mb-4">
-                        <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs font-bold uppercase">{e.testType.replace('_', ' ')}</span>
-                        <span className={cn(
-                          "text-xs font-bold px-2 py-1 rounded",
-                          e.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"
-                        )}>{e.active ? 'ACTIVE' : 'CLOSED'}</span>
-                      </div>
-                      <h4 className="text-sm font-bold text-gray-900 mb-2">{e.hypothesis}</h4>
-                      <div className="space-y-2 text-xs text-gray-500">
-                        <p><span className="font-semibold">Channel:</span> {e.channel}</p>
-                        <p><span className="font-semibold">Metric:</span> {e.successMetric}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'signals' && (
-              <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-bold text-gray-900">Traction Signals</h3>
-                  <div className="flex items-center space-x-4">
-                    <Link to="/signals" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center">
-                      Manage All <ChevronRight className="h-4 w-4 ml-1" />
-                    </Link>
-                    <button 
-                    onClick={async () => {
-                      if (!selectedCompanyId) return;
-                      await createSignal({
-                        companyId: selectedCompanyId,
-                        signalDate: new Date().toISOString(),
-                        callsBooked: 0,
-                        waitlistSignups: 5,
-                        pilots: 0,
-                        lois: 0,
-                        preOrders: 0,
-                        payingCustomers: 0,
-                        revenue: 0,
-                        repeatUsage: 0,
-                        notes: 'New signups from LinkedIn post.',
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString()
-                      });
-                    }}
-                    className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 flex items-center"
-                  >
-                    <Plus className="h-4 w-4 mr-1" /> Log Signal
-                  </button>
-                </div>
-              </div>
-              <div className="bg-white shadow-sm border border-gray-200 rounded-lg overflow-hidden">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waitlist</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {signals.map(s => (
-                        <tr key={s.id}>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{format(new Date(s.signalDate), 'MMM d, yyyy')}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-indigo-600 font-bold">+{s.waitlistSignups}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-bold">${s.revenue}</td>
-                          <td className="px-6 py-4 text-sm text-gray-500">{s.notes}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'readiness' && (
-              <div className="space-y-6">
-                <h3 className="text-lg font-bold text-gray-900">Readiness Reviews</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {readinessReviews.map(r => (
-                    <div key={r.id} className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                      <div className="flex justify-between items-start mb-4">
-                        <h4 className="text-sm font-bold text-gray-900 capitalize">{r.reviewType.replace('_', ' ')} Review</h4>
-                        <span className={cn(
-                          "text-xs font-bold px-2 py-1 rounded",
-                          r.status === 'ready' ? "bg-green-100 text-green-700" :
-                          r.status === 'not_ready' ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                        )}>{r.status.toUpperCase()}</span>
-                      </div>
-                      <div className="space-y-2">
-                        {r.reasons.map((reason, idx) => (
-                          <p key={idx} className="text-sm text-gray-600">{reason}</p>
-                        ))}
-                      </div>
-                      {r.missingItems.length > 0 && (
-                        <div className="mt-4 space-y-2">
-                          <p className="text-xs font-bold text-gray-500 uppercase">Missing Items</p>
-                          <ul className="list-disc list-inside text-xs text-red-600 space-y-1">
-                            {r.missingItems.map((item, idx) => <li key={idx}>{item}</li>)}
-                          </ul>
+                    return (
+                      <div key={reviewType} className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 px-4 py-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {reviewType.replace(/_/g, ' ')}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {review?.reasons?.[0] || 'No official review captured yet.'}
+                          </p>
                         </div>
-                      )}
-                      <div className="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-400">
-                        Reviewed on {format(new Date(r.reviewedAt), 'MMM d, yyyy')}
+                        {icon}
                       </div>
-                    </div>
-                  ))}
-                  {readinessReviews.length === 0 && (
-                    <div className="col-span-full py-12 text-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                      <ShieldCheck className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500">No official reviews have been conducted yet.</p>
-                    </div>
-                  )}
+                    );
+                  })}
                 </div>
               </div>
-            )}
-          </div>
-        </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-slate-950">Program Status</h2>
+                <p className="mt-1 text-sm text-slate-500">Operational status without confusing it for readiness.</p>
+                <div className="mt-5 space-y-4">
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Membership</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950">{selectedCompany.membershipStatus || 'unknown'}</p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Mentor support</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950">
+                      {selectedInsight.activeMentorAssignments > 0
+                        ? `${selectedInsight.activeMentorAssignments} active mentor assignment${selectedInsight.activeMentorAssignments > 1 ? 's' : ''}`
+                        : 'No active mentor assignment yet'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Cohort application</p>
+                    {selectedApplication ? (
+                      <p className="mt-1 text-sm font-semibold text-slate-950">
+                        {selectedApplication.decision.replace(/_/g, ' ')}
+                      </p>
+                    ) : activeCohort ? (
+                      <button
+                        onClick={() => handleApplyToCohort(selectedCompany.id)}
+                        disabled={!selectedInsight.isValidationLevelOneReady}
+                        className="mt-2 inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        Apply to {activeCohort.name}
+                      </button>
+                    ) : (
+                      <p className="mt-1 text-sm text-slate-500">No active cohort is available yet.</p>
+                    )}
+                    {!selectedApplication && activeCohort && !selectedInsight.isValidationLevelOneReady && (
+                      <p className="mt-2 text-sm text-slate-500">
+                        Close the current Builder proof gaps before asking staff to review a cohort application.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </>
       ) : (
-        <div className="bg-white p-12 text-center rounded-lg border border-dashed border-gray-300">
-          <Building className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900">No companies registered</h3>
-          <p className="text-gray-500 mt-1">Register your startup to begin your journey with Opportunity Machine.</p>
+        <div className="rounded-[32px] border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm">
+          <Building className="mx-auto h-12 w-12 text-slate-300" />
+          <h2 className="mt-4 text-xl font-semibold text-slate-950">No startup workspace yet</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Register your company first, then Builder evidence, readiness, and support unlocks can accumulate in one place.
+          </p>
         </div>
       )}
     </div>

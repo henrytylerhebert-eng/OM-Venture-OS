@@ -265,6 +265,7 @@
       "type": "object",
       "properties": {
         "companyId": { "type": "string" },
+        "cohortParticipationId": { "type": "string" },
         "problemTheme": { "type": "string" },
         "numberOfMentions": { "type": "number" },
         "averagePainIntensity": { "type": "number" },
@@ -272,11 +273,29 @@
         "representativeQuote": { "type": "string" },
         "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
         "status": { "type": "string", "enum": ["keep", "narrow", "pivot"] },
+        "sourceInterviewIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "notes": { "type": "string" },
+        "createdByPersonId": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["companyId", "problemTheme", "numberOfMentions", "status", "createdAt", "updatedAt"]
+      "required": [
+        "companyId",
+        "problemTheme",
+        "numberOfMentions",
+        "averagePainIntensity",
+        "unpromptedMentions",
+        "representativeQuote",
+        "confidence",
+        "status",
+        "sourceInterviewIds",
+        "createdByPersonId",
+        "createdAt",
+        "updatedAt"
+      ]
     },
     "assumption": {
       "title": "Assumption",

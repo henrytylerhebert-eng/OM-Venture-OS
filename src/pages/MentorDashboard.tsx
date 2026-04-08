@@ -4,10 +4,12 @@ import { getMentorAssignments } from '../services/mentorService';
 import { getCompanies } from '../services/companyService';
 import { submitFeedback, getFeedback } from '../services/feedbackService';
 import { getInterviews, getAssumptions, getExperiments, getSignals } from '../services/evidenceService';
-import { Company, MentorAssignment, Feedback, Interview, Assumption, Experiment, Signal, FeedbackRole } from '../types';
+import { getPortfolioProgress } from '../services/progressService';
+import { Company, MentorAssignment, Feedback, Interview, Assumption, Experiment, Signal, FeedbackRole, PortfolioProgress } from '../types';
 import { MessageSquare, Calendar, User, ExternalLink, Lightbulb, FlaskConical, Signal as SignalIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { where } from 'firebase/firestore';
+import { formatStageLabel } from '../lib/roleRouting';
 
 const MentorDashboard: React.FC = () => {
   const { profile, loading } = useAuth();
@@ -16,6 +18,7 @@ const MentorDashboard: React.FC = () => {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
   const [companyFeedback, setCompanyFeedback] = useState<Feedback[]>([]);
+  const [portfolioProgress, setPortfolioProgress] = useState<PortfolioProgress[]>([]);
 
   // Evidence State
   const [interviews, setInterviews] = useState<Interview[]>([]);
@@ -34,10 +37,12 @@ const MentorDashboard: React.FC = () => {
       const assignedIds = assignments.map(a => a.companyId);
       setAssignedCompanies(all.filter(c => assignedIds.includes(c.id)));
     });
+    const unsubProgress = getPortfolioProgress(setPortfolioProgress);
 
     return () => {
       unsubAssignments();
       unsubCompanies();
+      unsubProgress();
     };
   }, [profile?.personId, assignments.length]);
 
@@ -75,12 +80,14 @@ const MentorDashboard: React.FC = () => {
   };
 
   const selectedCompany = assignedCompanies.find(c => c.id === selectedCompanyId);
+  const getCompanyStage = (companyId: string) =>
+    formatStageLabel(portfolioProgress.find((progress) => progress.companyId === companyId)?.finalStage);
 
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-bold text-gray-900">Mentor Dashboard</h1>
-        <p className="text-gray-500">Support your assigned startups and log progress.</p>
+        <h1 className="text-2xl font-bold text-gray-900">Mentor Workspace</h1>
+        <p className="text-gray-500">Support assigned founders with scoped evidence review, current phase context, and actionable notes.</p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -101,7 +108,7 @@ const MentorDashboard: React.FC = () => {
                 }`}
               >
                 <h3 className="font-bold text-gray-900">{company.name}</h3>
-                <p className="text-xs text-gray-500 mt-1">{company.stage}</p>
+                <p className="text-xs text-gray-500 mt-1 capitalize">{getCompanyStage(company.id)}</p>
               </button>
             ))}
             {assignedCompanies.length === 0 && (
@@ -123,7 +130,7 @@ const MentorDashboard: React.FC = () => {
                     <p className="text-sm text-gray-500 mt-1">{selectedCompany.description || 'No description provided.'}</p>
                   </div>
                   <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold">
-                    {selectedCompany.stage}
+                    {getCompanyStage(selectedCompany.id)}
                   </span>
                 </div>
                 
@@ -212,7 +219,10 @@ const MentorDashboard: React.FC = () => {
               {/* Feedback History */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-gray-900">Recent Notes</h3>
-                {companyFeedback.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((item) => (
+                {companyFeedback
+                  .slice()
+                  .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
+                  .map((item) => (
                   <div key={item.id} className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center text-xs text-gray-500">

@@ -384,19 +384,40 @@ export interface Interview {
   updatedAt: string;
 }
 
+export interface EvidencePattern {
+  id: string;
+  companyId: string;
+  cohortParticipationId?: string | null;
+  problemTheme: string;
+  numberOfMentions: number;
+  averagePainIntensity: number;
+  unpromptedMentions: number;
+  representativeQuote: string;
+  confidence: number;
+  status: PatternStatus;
+  sourceInterviewIds: string[];
+  notes?: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  createdByPersonId?: string;
+}
+
 export interface Pattern {
   id: string;
   companyId: string;
+  cohortParticipationId?: string;
   problemTheme: string;
   numberOfMentions: number;
-  averagePainIntensity?: number;
-  unpromptedMentions?: number;
-  representativeQuote?: string;
-  confidence?: StageConfidence;
+  averagePainIntensity: number;
+  unpromptedMentions: number;
+  representativeQuote: string;
+  confidence: StageConfidence;
   status: PatternStatus;
+  sourceInterviewIds: string[];
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  createdByPersonId: string;
 }
 
 export interface Assumption {
@@ -583,4 +604,171 @@ export interface VentureCopilotResponse {
   };
   generatedAt: string;
   analysis: VentureCopilotAnalysis;
+}
+
+export enum CompanyEvidenceSourceLane {
+  MEMBER_COMPANIES = "Member Companies",
+  CUSTOMER_DISCOVERY = "Customer Discovery",
+  MEETING_NOTES = "Meeting Notes",
+  MONTHLY_REPORTING = "Monthly Reporting",
+  INTERNAL_APPLICATION_REVIEW = "Internal Application Review",
+  FEEDBACK = "Feedback",
+  MEETING_REQUESTS = "Meeting Requests",
+  NEWS_TRACKER = "News Tracker"
+}
+
+export type EvidenceConfidenceClass =
+  | 'verified'
+  | 'reported'
+  | 'inference'
+  | 'missing';
+
+export const CompanyEvidenceTruthClass = {
+  VERIFIED: 'verified',
+  REPORTED: 'reported',
+  INFERENCE: 'inference',
+  MISSING: 'missing',
+} as const;
+
+export type CompanyEvidenceTruthClass =
+  typeof CompanyEvidenceTruthClass[keyof typeof CompanyEvidenceTruthClass];
+
+export const CompanyEvidenceReviewGoal = {
+  READINESS: 'readiness',
+  UNLOCK: 'unlock',
+  MENTOR_MATCH: 'mentor_match',
+  CONTENT: 'content',
+  REPORTING: 'reporting',
+} as const;
+
+export type CompanyEvidenceReviewGoal =
+  typeof CompanyEvidenceReviewGoal[keyof typeof CompanyEvidenceReviewGoal];
+
+export type CompanyEvidenceSourceAttributeValue =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<string | number | boolean | null>;
+
+export interface CompanyEvidenceSourceRecord {
+  id: string;
+  sourceLane: CompanyEvidenceSourceLane;
+  sourceTitle: string;
+  sourceRecordId?: string;
+  canonicalCompanyId: string;
+  sourceEntityName?: string;
+  recordDate?: string;
+  eventType: string;
+  truthClass: CompanyEvidenceTruthClass;
+  summary: string;
+  exactEvidence?: string;
+  attributes?: Record<string, CompanyEvidenceSourceAttributeValue>;
+  retrievalStatus?: 'ok' | 'empty' | 'failed';
+  retrievalError?: string;
+  approved?: boolean;
+}
+
+export interface CompanyEvidenceContextInput {
+  canonicalCompanyId: string;
+  canonicalCompanyName: string;
+  aliases: string[];
+  reviewGoal: CompanyEvidenceReviewGoal;
+  allowedSources: CompanyEvidenceSourceLane[];
+  sourceRecords: CompanyEvidenceSourceRecord[];
+  reportingPeriodFilter?: {
+    start?: string;
+    end?: string;
+    label?: string;
+  };
+  todayDate: string;
+}
+
+export interface CompanyEvidenceSourceCoverage {
+  lane: CompanyEvidenceSourceLane;
+  recordCount: number;
+  retrievalStatus: 'ok' | 'empty' | 'failed' | 'missing';
+  note: string;
+}
+
+export interface CompanyEvidenceTimelineEntry {
+  date: string | null;
+  source: string;
+  eventType: 'discovery' | 'reporting' | 'meeting' | 'milestone' | 'roadblock' | 'ask' | 'news' | 'other';
+  summary: string;
+  confidenceClass: EvidenceConfidenceClass;
+}
+
+export interface CompanyEvidenceCustomerDiscoverySummary {
+  verifiedInterviewCount: number | null;
+  reportedInterviewCount: number | string | null;
+  channels: string[];
+  segments: string[];
+  themes: string[];
+  strongestEvidence: string[];
+  unknowns: string[];
+}
+
+export interface CompanyEvidenceReportingSummary {
+  periodsFound: string[];
+  highlights: string[];
+  milestones: string[];
+  roadblocks: string[];
+  customerFeedback: string[];
+  asks: string[];
+  missingPeriods: string[];
+}
+
+export interface CompanyEvidenceQualityReview {
+  contradictions: string[];
+  retrievalFailures: string[];
+  staleSignals: string[];
+  namingDrift: string[];
+  reviewedTruthNeeded: string[];
+}
+
+export interface CompanyEvidenceQualityFlag {
+  key: string;
+  severity: StageConfidence;
+  message: string;
+  sourceLane?: CompanyEvidenceSourceLane;
+}
+
+export interface CompanyEvidenceReadinessRecommendation {
+  internallyUsable: boolean;
+  contentReady: boolean;
+  spotlightReady: boolean;
+  externallyPublishable: boolean;
+  reasoning: {
+    internallyUsable: string;
+    contentReady: string;
+    spotlightReady: string;
+    externallyPublishable: string;
+  };
+}
+
+export type CompanyEvidenceSourceCoverageState = 'present' | 'missing' | 'unknown';
+
+export interface CompanyEvidenceContext {
+  companyId: string;
+  canonicalCompanyName: string;
+  aliasesDetected: string[];
+  reviewGoal: CompanyEvidenceReviewGoal;
+  lastConfirmedActivityDate: string | null;
+  sourceCoverage: {
+    member_companies: CompanyEvidenceSourceCoverageState;
+    customer_discovery: CompanyEvidenceSourceCoverageState;
+    meeting_notes: CompanyEvidenceSourceCoverageState;
+    monthly_reporting: CompanyEvidenceSourceCoverageState;
+    internal_application_review: CompanyEvidenceSourceCoverageState;
+    feedback: CompanyEvidenceSourceCoverageState;
+    meeting_requests: CompanyEvidenceSourceCoverageState;
+    news_tracker: CompanyEvidenceSourceCoverageState;
+  };
+  timeline: CompanyEvidenceTimelineEntry[];
+  customerDiscovery: CompanyEvidenceCustomerDiscoverySummary;
+  reportingHistory: CompanyEvidenceReportingSummary;
+  evidenceQuality: CompanyEvidenceQualityReview;
+  readiness: CompanyEvidenceReadinessRecommendation;
+  nextAction: string;
 }

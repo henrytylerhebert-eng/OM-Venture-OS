@@ -27,6 +27,11 @@ service cloud.firestore {
     function isFounder() {
       return isAuthenticated() && getUserData().role == 'founder';
     }
+
+    function isFounderLike() {
+      return isAuthenticated() &&
+        (getUserData().role == 'founder' || getUserData().role == 'startup_team');
+    }
     
     function isMentor() {
       return isAuthenticated() && getUserData().role == 'mentor';
@@ -42,6 +47,59 @@ service cloud.firestore {
 
     function isValidEmail(email) {
       return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isFounderLeadForCompany(companyId) {
+      return isFounderLike() &&
+        get(/databases/$(database)/documents/companies/$(companyId)).data.founderLeadPersonId == getUserData().personId;
+    }
+
+    function isValidInterviewPayload(data) {
+      return data.companyId is string &&
+        data.companyId.size() > 0 &&
+        data.interviewerPersonId is string &&
+        data.interviewerPersonId.size() > 0 &&
+        data.intervieweeName is string &&
+        data.intervieweeName.size() > 0 &&
+        data.intervieweeSegment is string &&
+        data.intervieweeSegment.size() > 0 &&
+        data.interviewSource is string &&
+        data.interviewSource.size() > 0 &&
+        data.interviewDate is string &&
+        data.problemTheme is string &&
+        data.painIntensity is number &&
+        data.painIntensity >= 0 &&
+        data.painIntensity <= 5 &&
+        data.mentionSpontaneous is bool &&
+        data.currentAlternative is string &&
+        data.bestQuote is string &&
+        data.followUpNeeded is bool &&
+        data.notes is string &&
+        data.countsTowardMinimum is bool;
+    }
+
+    function isValidPatternPayload(data) {
+      return data.companyId is string &&
+        data.companyId.size() > 0 &&
+        data.problemTheme is string &&
+        data.problemTheme.size() > 0 &&
+        data.numberOfMentions is number &&
+        data.numberOfMentions > 0 &&
+        data.averagePainIntensity is number &&
+        data.averagePainIntensity >= 0 &&
+        data.averagePainIntensity <= 5 &&
+        data.unpromptedMentions is number &&
+        data.unpromptedMentions >= 0 &&
+        data.unpromptedMentions <= data.numberOfMentions &&
+        data.representativeQuote is string &&
+        data.confidence in ['low', 'medium', 'high'] &&
+        data.status in ['keep', 'narrow', 'pivot'] &&
+        data.sourceInterviewIds is list &&
+        data.sourceInterviewIds.size() > 0 &&
+        data.numberOfMentions == data.sourceInterviewIds.size() &&
+        data.createdByPersonId is string &&
+        data.createdByPersonId.size() > 0 &&
+        (!(data.confidence == 'high') || data.representativeQuote.size() > 0);
     }
 
     // ===============================================================
@@ -134,13 +192,31 @@ service cloud.firestore {
 
     // Phase 2: Evidence Engine
     match /interviews/{id} {
-      allow read: if isAuthenticated();
-      allow write: if isStaff() || (isFounder() && getUserData().personId == resource.data.interviewerPersonId);
+      allow read: if isStaff() || isFounderLeadForCompany(resource.data.companyId) || isMentor();
+      allow create: if (isStaff() && isValidInterviewPayload(request.resource.data)) ||
+        (isFounderLeadForCompany(request.resource.data.companyId) &&
+         request.resource.data.interviewerPersonId == getUserData().personId &&
+         isValidInterviewPayload(request.resource.data));
+      allow update: if (isStaff() && isValidInterviewPayload(request.resource.data)) ||
+        (isFounderLeadForCompany(resource.data.companyId) &&
+         request.resource.data.companyId == resource.data.companyId &&
+         request.resource.data.interviewerPersonId == resource.data.interviewerPersonId &&
+         isValidInterviewPayload(request.resource.data));
+      allow delete: if isStaff() || isFounderLeadForCompany(resource.data.companyId);
     }
 
     match /patterns/{id} {
-      allow read: if isAuthenticated();
-      allow write: if isStaff() || isFounder();
+      allow read: if isStaff() || isFounderLeadForCompany(resource.data.companyId) || isMentor();
+      allow create: if (isStaff() && isValidPatternPayload(request.resource.data)) ||
+        (isFounderLeadForCompany(request.resource.data.companyId) &&
+         request.resource.data.createdByPersonId == getUserData().personId &&
+         isValidPatternPayload(request.resource.data));
+      allow update: if (isStaff() && isValidPatternPayload(request.resource.data)) ||
+        (isFounderLeadForCompany(resource.data.companyId) &&
+         request.resource.data.companyId == resource.data.companyId &&
+         request.resource.data.createdByPersonId == resource.data.createdByPersonId &&
+         isValidPatternPayload(request.resource.data));
+      allow delete: if isStaff() || isFounderLeadForCompany(resource.data.companyId);
     }
 
     match /assumptions/{id} {

@@ -1,14 +1,74 @@
 import { collection, doc, query, onSnapshot, updateDoc, addDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Interview, Pattern, Assumption, Experiment, Signal } from '../types';
+import { Interview, Pattern, Assumption, Experiment, Signal, PatternStatus, StageConfidence } from '../types';
 import { handleFirestoreError, OperationType } from './baseService';
+import {
+  normalizePatternRecord,
+  preparePatternWritePayload,
+  summarizePatternWidgets,
+  type PatternWidgetSummary,
+} from '../lib/patternUtils';
+
+const clampNumber = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const normalizeInterview = (interview: Partial<Interview> & { id: string }): Interview => ({
+  id: interview.id,
+  companyId: typeof interview.companyId === 'string' ? interview.companyId : '',
+  cohortParticipationId:
+    typeof interview.cohortParticipationId === 'string' && interview.cohortParticipationId.trim()
+      ? interview.cohortParticipationId
+      : undefined,
+  interviewerPersonId: typeof interview.interviewerPersonId === 'string' ? interview.interviewerPersonId : '',
+  intervieweeName: typeof interview.intervieweeName === 'string' ? interview.intervieweeName.trim() : '',
+  intervieweeSegment: typeof interview.intervieweeSegment === 'string' ? interview.intervieweeSegment.trim() : '',
+  interviewSource: typeof interview.interviewSource === 'string' ? interview.interviewSource.trim() : '',
+  interviewDate: typeof interview.interviewDate === 'string' ? interview.interviewDate : '',
+  problemTheme: typeof interview.problemTheme === 'string' ? interview.problemTheme.trim() : '',
+  painIntensity: clampNumber(
+    typeof interview.painIntensity === 'number' && Number.isFinite(interview.painIntensity)
+      ? interview.painIntensity
+      : 0,
+    0,
+    5
+  ),
+  mentionSpontaneous: Boolean(interview.mentionSpontaneous),
+  currentAlternative: typeof interview.currentAlternative === 'string' ? interview.currentAlternative.trim() : '',
+  bestQuote: typeof interview.bestQuote === 'string' ? interview.bestQuote.trim() : '',
+  followUpNeeded: Boolean(interview.followUpNeeded),
+  notes: typeof interview.notes === 'string' ? interview.notes.trim() : '',
+  countsTowardMinimum: Boolean(interview.countsTowardMinimum),
+  createdAt: typeof interview.createdAt === 'string' ? interview.createdAt : '',
+  updatedAt:
+    typeof interview.updatedAt === 'string'
+      ? interview.updatedAt
+      : typeof interview.createdAt === 'string'
+        ? interview.createdAt
+        : '',
+});
+
+const hasRequiredPatternFields = (data: Partial<Pattern>): data is Omit<Pattern, 'id'> =>
+  typeof data.companyId === 'string' &&
+  typeof data.problemTheme === 'string' &&
+  typeof data.numberOfMentions === 'number' &&
+  typeof data.averagePainIntensity === 'number' &&
+  typeof data.unpromptedMentions === 'number' &&
+  typeof data.representativeQuote === 'string' &&
+  typeof data.confidence === 'string' &&
+  typeof data.status === 'string' &&
+  Array.isArray(data.sourceInterviewIds) &&
+  typeof data.createdByPersonId === 'string' &&
+  typeof data.createdAt === 'string' &&
+  typeof data.updatedAt === 'string';
+
+export type { PatternWidgetSummary };
+export { preparePatternWritePayload, summarizePatternWidgets };
 
 // Interviews
 export const getInterviews = (callback: (interviews: Interview[]) => void, companyId?: string) => {
   const constraints = companyId ? [where('companyId', '==', companyId)] : [];
   const q = query(collection(db, 'interviews'), ...constraints);
   return onSnapshot(q, (snapshot) => {
-    const interviews = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Interview));
+    const interviews = snapshot.docs.map(doc => normalizeInterview({ id: doc.id, ...doc.data() } as Interview));
     callback(interviews);
   }, (error) => handleFirestoreError(error, OperationType.LIST, 'interviews'));
 };
@@ -41,18 +101,33 @@ export const deleteInterview = async (id: string): Promise<void> => {
 };
 
 // Patterns
-export const getPatterns = (callback: (patterns: Pattern[]) => void, companyId?: string) => {
-  const constraints = companyId ? [where('companyId', '==', companyId)] : [];
-  const q = query(collection(db, 'patterns'), ...constraints);
+export const listPatternsByCompany = (callback: (patterns: Pattern[]) => void, companyId: string) => {
+  const q = query(collection(db, 'patterns'), where('companyId', '==', companyId));
   return onSnapshot(q, (snapshot) => {
-    const patterns = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Pattern));
+    const patterns = snapshot.docs.map(doc => normalizePatternRecord({ id: doc.id, ...doc.data() } as Pattern));
     callback(patterns);
   }, (error) => handleFirestoreError(error, OperationType.LIST, 'patterns'));
 };
 
+export const listPatternsForStaffReview = (callback: (patterns: Pattern[]) => void) => {
+  const q = query(collection(db, 'patterns'));
+  return onSnapshot(q, (snapshot) => {
+    const patterns = snapshot.docs.map(doc => normalizePatternRecord({ id: doc.id, ...doc.data() } as Pattern));
+    callback(patterns);
+  }, (error) => handleFirestoreError(error, OperationType.LIST, 'patterns'));
+};
+
+export const getPatterns = (callback: (patterns: Pattern[]) => void, companyId?: string) => {
+  if (companyId) {
+    return listPatternsByCompany(callback, companyId);
+  }
+
+  return listPatternsForStaffReview(callback);
+};
+
 export const createPattern = async (pattern: Omit<Pattern, 'id'>): Promise<void> => {
   try {
-    await addDoc(collection(db, 'patterns'), pattern);
+    await addDoc(collection(db, 'patterns'), preparePatternWritePayload(pattern));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'patterns');
   }
@@ -60,7 +135,10 @@ export const createPattern = async (pattern: Omit<Pattern, 'id'>): Promise<void>
 
 export const updatePattern = async (id: string, data: Partial<Pattern>): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'patterns', id), data);
+    await updateDoc(
+      doc(db, 'patterns', id),
+      hasRequiredPatternFields(data) ? preparePatternWritePayload(data) : data
+    );
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `patterns/${id}`);
   }
