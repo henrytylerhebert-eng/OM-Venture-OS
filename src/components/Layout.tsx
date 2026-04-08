@@ -2,7 +2,7 @@ import React from 'react';
 import { Navigate, Outlet, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthProvider';
 import { logout } from '../firebase';
-import { LayoutDashboard, Building2, Users, ClipboardList, LogOut, UserCircle } from 'lucide-react';
+import { LayoutDashboard, Building2, Users, ClipboardList, LogOut, UserCircle, MessageSquare, Lightbulb, FlaskConical, Signal as SignalIcon, ClipboardCheck, Brain } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const Layout: React.FC = () => {
@@ -19,9 +19,15 @@ const Layout: React.FC = () => {
 
   const navItems = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
+    { label: 'Interviews', icon: MessageSquare, path: '/discovery', roles: ['founder', 'om_admin', 'om_staff', 'mentor'] },
+    { label: 'Patterns', icon: Brain, path: '/patterns', roles: ['founder', 'om_admin', 'om_staff', 'mentor'] },
+    { label: 'Assumptions', icon: Lightbulb, path: '/assumptions', roles: ['founder', 'om_admin', 'om_staff', 'mentor'] },
+    { label: 'Experiments', icon: FlaskConical, path: '/experiments', roles: ['founder', 'om_admin', 'om_staff', 'mentor'] },
+    { label: 'Signals', icon: SignalIcon, path: '/signals', roles: ['founder', 'om_admin', 'om_staff', 'mentor'] },
     { label: 'Companies', icon: Building2, path: '/companies', roles: ['om_admin', 'om_staff'] },
     { label: 'Cohorts', icon: ClipboardList, path: '/cohorts', roles: ['om_admin', 'om_staff', 'founder'] },
     { label: 'Mentors', icon: Users, path: '/mentors', roles: ['om_admin', 'om_staff'] },
+    { label: 'Readiness', icon: ClipboardCheck, path: '/readiness', roles: ['om_admin', 'om_staff'] },
     { label: 'Profile', icon: UserCircle, path: '/profile' },
   ];
 

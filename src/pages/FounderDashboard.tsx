@@ -1,34 +1,39 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../components/AuthProvider';
+import { getCompanies, createCompany } from '../services/companyService';
+import { submitApplication, getApplications, getCohorts } from '../services/cohortService';
 import { 
-  getCompanies, 
-  submitApplication, 
-  getApplications, 
-  createCompany,
-  getInterviews,
-  createInterview,
-  getAssumptions,
-  createAssumption,
-  updateAssumption,
-  getExperiments,
-  createExperiment,
-  getSignals,
+  getInterviews, 
+  createInterview, 
+  getAssumptions, 
+  createAssumption, 
+  updateAssumption, 
+  getExperiments, 
+  createExperiment, 
+  getSignals, 
   createSignal,
-  getReadinessReviews
-} from '../services/firestoreService';
+  getPatterns
+} from '../services/evidenceService';
+import { getReadinessReviews } from '../services/progressService';
 import { 
   Company, 
   CohortApplication, 
+  Cohort,
   Interview, 
   Assumption, 
   Experiment, 
   Signal, 
   ReadinessReview,
-  SignalType,
+  Pattern,
   AssumptionType,
   ReadinessType,
-  ReadinessStatus
+  ReadinessStatus,
+  MembershipStatus,
+  DecisionStatus,
+  AssumptionStatus,
+  TestType
 } from '../types';
+import { Link } from 'react-router-dom';
 import { 
   Rocket, 
   CheckCircle2, 
@@ -41,18 +46,20 @@ import {
   Signal as SignalIcon, 
   ShieldCheck,
   ChevronRight,
-  AlertCircle
+  AlertCircle,
+  Brain
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { where } from 'firebase/firestore';
 import { cn } from '../lib/utils';
 
-type Tab = 'overview' | 'interviews' | 'assumptions' | 'experiments' | 'signals' | 'readiness';
+type Tab = 'overview' | 'interviews' | 'patterns' | 'assumptions' | 'experiments' | 'signals' | 'readiness';
 
 const FounderDashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const [myCompanies, setMyCompanies] = useState<Company[]>([]);
   const [myApplications, setMyApplications] = useState<CohortApplication[]>([]);
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateCompany, setShowCreateCompany] = useState(false);
   const [newCompanyName, setNewCompanyName] = useState('');
@@ -62,16 +69,17 @@ const FounderDashboard: React.FC = () => {
 
   // Evidence State
   const [interviews, setInterviews] = useState<Interview[]>([]);
+  const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [assumptions, setAssumptions] = useState<Assumption[]>([]);
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [readinessReviews, setReadinessReviews] = useState<ReadinessReview[]>([]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!profile?.personId) return;
     
     const unsubCompanies = getCompanies((all) => {
-      const filtered = all.filter(c => c.founderUids.includes(user.uid));
+      const filtered = all.filter(c => c.founderLeadPersonId === profile.personId);
       setMyCompanies(filtered);
       if (filtered.length > 0 && !selectedCompanyId) {
         setSelectedCompanyId(filtered[0].id);
@@ -79,20 +87,24 @@ const FounderDashboard: React.FC = () => {
     });
 
     const unsubApps = getApplications((all) => {
-      setMyApplications(all.filter(a => a.founderUid === user.uid));
-    }, [where('founderUid', '==', user.uid)]);
+      setMyApplications(all.filter(a => a.founderPersonId === profile.personId));
+    }, [where('founderPersonId', '==', profile.personId)]);
+
+    const unsubCohorts = getCohorts(setCohorts);
 
     setLoading(false);
     return () => {
       unsubCompanies();
       unsubApps();
+      unsubCohorts();
     };
-  }, [user]);
+  }, [profile?.personId]);
 
   useEffect(() => {
     if (!selectedCompanyId) return;
 
     const unsubInterviews = getInterviews(setInterviews, selectedCompanyId);
+    const unsubPatterns = getPatterns(setPatterns, selectedCompanyId);
     const unsubAssumptions = getAssumptions(setAssumptions, selectedCompanyId);
     const unsubExperiments = getExperiments(setExperiments, selectedCompanyId);
     const unsubSignals = getSignals(setSignals, selectedCompanyId);
@@ -100,6 +112,7 @@ const FounderDashboard: React.FC = () => {
 
     return () => {
       unsubInterviews();
+      unsubPatterns();
       unsubAssumptions();
       unsubExperiments();
       unsubSignals();
@@ -109,17 +122,17 @@ const FounderDashboard: React.FC = () => {
 
   const handleCreateCompany = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !newCompanyName) return;
+    if (!profile?.personId || !newCompanyName) return;
     
     const id = await createCompany({
       name: newCompanyName,
+      organizationId: 'default-org',
+      founderLeadPersonId: profile.personId,
       description: '',
-      status: 'pending',
-      stage: 'Idea Development',
-      progressScore: 0,
-      readinessNotes: '',
-      founderUids: [user.uid],
-      createdAt: new Date().toISOString()
+      membershipStatus: MembershipStatus.PENDING,
+      active: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     });
     
     setSelectedCompanyId(id);
@@ -128,13 +141,18 @@ const FounderDashboard: React.FC = () => {
   };
 
   const handleApplyToCohort = async (companyId: string) => {
-    if (!user) return;
+    if (!profile?.personId || cohorts.length === 0) return;
+    
+    // For demo, apply to the first active cohort
+    const activeCohort = cohorts.find(c => c.status === 'active') || cohorts[0];
+
     await submitApplication({
       companyId,
-      cohortId: 'default-cohort',
-      founderUid: user.uid,
-      status: 'pending',
-      submittedAt: new Date().toISOString()
+      founderPersonId: profile.personId,
+      requestedCohortId: activeCohort.id,
+      decision: DecisionStatus.PENDING,
+      submittedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     });
   };
 
@@ -194,6 +212,7 @@ const FounderDashboard: React.FC = () => {
               {[
                 { id: 'overview', label: 'Overview', icon: Rocket },
                 { id: 'interviews', label: 'Interviews', icon: MessageSquare },
+                { id: 'patterns', label: 'Patterns', icon: Brain },
                 { id: 'assumptions', label: 'Assumptions', icon: Lightbulb },
                 { id: 'experiments', label: 'Experiments', icon: FlaskConical },
                 { id: 'signals', label: 'Signals', icon: SignalIcon },
@@ -228,12 +247,12 @@ const FounderDashboard: React.FC = () => {
                     <div className="flex justify-between items-start mb-6">
                       <div>
                         <h3 className="text-xl font-bold text-gray-900">{selectedCompany.name}</h3>
-                        <p className="text-sm text-gray-500 mt-1">{selectedCompany.stage}</p>
+                        <p className="text-sm text-gray-500 mt-1">{selectedCompany.membershipStatus}</p>
                       </div>
                       <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                        selectedCompany.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                        selectedCompany.active ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
                       }`}>
-                        {selectedCompany.status.toUpperCase()}
+                        {selectedCompany.active ? 'ACTIVE' : 'INACTIVE'}
                       </span>
                     </div>
                     
@@ -267,11 +286,14 @@ const FounderDashboard: React.FC = () => {
                               <SignalIcon className="h-4 w-4 text-indigo-600" />
                             </div>
                             <div>
-                              <p className="text-sm font-medium text-gray-900 capitalize">{s.type}</p>
-                              <p className="text-xs text-gray-500">{s.date}</p>
+                              <p className="text-sm font-medium text-gray-900">Traction Signal</p>
+                              <p className="text-xs text-gray-500">{format(new Date(s.signalDate), 'MMM d, yyyy')}</p>
                             </div>
                           </div>
-                          <p className="text-sm font-bold text-gray-900">+{s.count}</p>
+                          <div className="text-right">
+                            {s.revenue > 0 && <p className="text-sm font-bold text-green-600">${s.revenue}</p>}
+                            {s.waitlistSignups > 0 && <p className="text-sm font-bold text-gray-900">{s.waitlistSignups} Signups</p>}
+                          </div>
                         </div>
                       ))}
                       {signals.length === 0 && <p className="text-sm text-gray-500 italic">No signals logged yet.</p>}
@@ -282,10 +304,10 @@ const FounderDashboard: React.FC = () => {
                 <div className="space-y-6">
                   <div className="bg-indigo-600 p-6 rounded-lg shadow-sm text-white">
                     <h4 className="text-lg font-bold mb-2">Next Milestone</h4>
-                    <p className="text-indigo-100 text-sm mb-6">Complete discovery phase by logging at least 10 interviews with a pain intensity {'>'} 7.</p>
+                    <p className="text-indigo-100 text-sm mb-6">Complete discovery phase by logging at least 10 interviews with a pain intensity {'>'} 4.</p>
                     <button 
                       onClick={() => handleApplyToCohort(selectedCompany.id)}
-                      disabled={myApplications.some(a => a.companyId === selectedCompany.id && a.status === 'pending')}
+                      disabled={myApplications.some(a => a.companyId === selectedCompany.id && a.decision === 'pending')}
                       className="w-full bg-white text-indigo-600 py-2 rounded-md text-sm font-bold hover:bg-indigo-50 transition-colors disabled:opacity-50"
                     >
                       Request Cohort Review
@@ -295,8 +317,8 @@ const FounderDashboard: React.FC = () => {
                   <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                     <h4 className="text-sm font-bold text-gray-900 mb-4">Readiness Status</h4>
                     <div className="space-y-4">
-                      {['builder_completion', 'mentor', 'intern', 'pitch', 'investor'].map(type => {
-                        const review = readinessReviews.find(r => r.type === type);
+                      {['builder_completion', 'mentor_ready', 'intern_ready', 'pitch_ready', 'investor_ready'].map(type => {
+                        const review = readinessReviews.find(r => r.reviewType === type);
                         return (
                           <div key={type} className="flex items-center justify-between">
                             <span className="text-sm text-gray-600 capitalize">{type.replace('_', ' ')}</span>
@@ -320,19 +342,30 @@ const FounderDashboard: React.FC = () => {
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-bold text-gray-900">Discovery Interviews</h3>
-                  <button 
+                  <div className="flex items-center space-x-4">
+                    <Link to="/discovery" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center">
+                      Manage All <ChevronRight className="h-4 w-4 ml-1" />
+                    </Link>
+                    <button 
                     onClick={async () => {
-                      if (!user || !selectedCompanyId) return;
+                      if (!profile?.personId || !selectedCompanyId) return;
                       await createInterview({
                         companyId: selectedCompanyId,
-                        founderUid: user.uid,
-                        segment: 'Early Adopter',
-                        painIntensity: 8,
-                        alternative: 'Manual spreadsheets',
-                        quote: 'This would save me 10 hours a week.',
-                        spontaneous: true,
-                        followUp: true,
-                        date: new Date().toISOString()
+                        interviewerPersonId: profile?.personId || 'unknown',
+                        intervieweeName: 'New Contact',
+                        intervieweeSegment: 'Early Adopter',
+                        interviewSource: 'LinkedIn',
+                        interviewDate: new Date().toISOString(),
+                        problemTheme: 'Efficiency',
+                        painIntensity: 4,
+                        mentionSpontaneous: true,
+                        currentAlternative: 'Manual spreadsheets',
+                        bestQuote: 'This would save me 10 hours a week.',
+                        followUpNeeded: true,
+                        notes: '',
+                        countsTowardMinimum: true,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
                       });
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 flex items-center"
@@ -340,17 +373,18 @@ const FounderDashboard: React.FC = () => {
                     <Plus className="h-4 w-4 mr-1" /> Log Interview
                   </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {interviews.map(i => (
                     <div key={i.id} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                       <div className="flex justify-between mb-2">
-                        <span className="text-xs font-bold text-indigo-600 uppercase">{i.segment}</span>
-                        <span className="text-xs text-gray-500">{format(new Date(i.date), 'MMM d')}</span>
+                        <span className="text-xs font-bold text-indigo-600 uppercase">{i.intervieweeSegment}</span>
+                        <span className="text-xs text-gray-500">{format(new Date(i.interviewDate || i.date || ''), 'MMM d')}</span>
                       </div>
-                      <p className="text-sm text-gray-900 font-medium italic mb-3">"{i.quote}"</p>
+                      <p className="text-sm text-gray-900 font-medium italic mb-3">"{i.bestQuote}"</p>
                       <div className="flex items-center justify-between text-xs text-gray-500">
-                        <span>Pain: <span className="font-bold text-gray-900">{i.painIntensity}/10</span></span>
-                        <span>Alt: <span className="font-bold text-gray-900">{i.alternative}</span></span>
+                        <span>Pain: <span className="font-bold text-gray-900">{i.painIntensity}/5</span></span>
+                        <span>Alt: <span className="font-bold text-gray-900">{i.currentAlternative}</span></span>
                       </div>
                     </div>
                   ))}
@@ -364,20 +398,59 @@ const FounderDashboard: React.FC = () => {
               </div>
             )}
 
+            {activeTab === 'patterns' && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-bold text-gray-900">Problem Patterns</h3>
+                  <Link to="/patterns" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center">
+                    Manage All <ChevronRight className="h-4 w-4 ml-1" />
+                  </Link>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {patterns.map(p => (
+                    <div key={p.id} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                      <div className="flex justify-between mb-2">
+                        <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">{p.status}</span>
+                        <span className="text-xs text-gray-500">{p.confidence} confidence</span>
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-900 mb-2">{p.problemTheme}</h4>
+                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                        <span>Mentions: <span className="font-bold text-gray-900">{p.numberOfMentions}</span></span>
+                        <span>Avg Pain: <span className="font-bold text-gray-900">{p.averagePainIntensity}/5</span></span>
+                      </div>
+                    </div>
+                  ))}
+                  {patterns.length === 0 && (
+                    <div className="col-span-full py-12 text-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                      <Brain className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-500">No patterns identified yet. Synthesize your interviews to find themes.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {activeTab === 'assumptions' && (
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-bold text-gray-900">Risky Assumptions</h3>
-                  <button 
+                  <div className="flex items-center space-x-4">
+                    <Link to="/assumptions" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center">
+                      Manage All <ChevronRight className="h-4 w-4 ml-1" />
+                    </Link>
+                    <button 
                     onClick={async () => {
                       if (!selectedCompanyId) return;
                       await createAssumption({
                         companyId: selectedCompanyId,
                         statement: 'Users will pay $50/mo for this service.',
-                        type: 'viability',
-                        importance: 9,
-                        evidence: 2,
-                        status: 'unvalidated'
+                        type: AssumptionType.VIABILITY,
+                        importanceScore: 9,
+                        evidenceScore: 2,
+                        priorityScore: 11,
+                        status: AssumptionStatus.UNKNOWN,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
                       });
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 flex items-center"
@@ -385,30 +458,44 @@ const FounderDashboard: React.FC = () => {
                     <Plus className="h-4 w-4 mr-1" /> Add Assumption
                   </button>
                 </div>
-                <div className="space-y-4">
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {assumptions.map(a => (
-                    <div key={a.id} className="bg-white p-4 rounded-lg border border-gray-200 flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
+                    <div key={a.id} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                      <div className="flex items-start justify-between mb-3">
                         <div className={cn(
                           "p-2 rounded-lg",
-                          a.type === 'desirability' ? "bg-blue-100 text-blue-600" :
-                          a.type === 'feasibility' ? "bg-green-100 text-green-600" : "bg-purple-100 text-purple-600"
+                          a.type === 'desirability' ? "bg-blue-50 text-blue-600" :
+                          a.type === 'feasibility' ? "bg-green-50 text-green-600" : "bg-purple-50 text-purple-600"
                         )}>
                           <Lightbulb className="h-5 w-5" />
                         </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-900">{a.statement}</p>
-                          <p className="text-xs text-gray-500 capitalize">{a.type} • Importance: {a.importance} • Evidence: {a.evidence}</p>
-                        </div>
+                        <span className={cn(
+                          "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
+                          a.status === 'validated' ? "bg-green-100 text-green-700" :
+                          a.status === 'invalidated' ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
+                        )}>
+                          {a.status}
+                        </span>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-24 bg-gray-200 rounded-full h-2 overflow-hidden">
-                          <div className="bg-indigo-600 h-full" style={{ width: `${(a.evidence / 10) * 100}%` }}></div>
+                      <p className="text-sm font-bold text-gray-900 mb-3 line-clamp-2">{a.statement}</p>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-[10px] font-medium text-gray-500">
+                          <span>Evidence Strength</span>
+                          <span>{a.evidenceScore}/10</span>
                         </div>
-                        <ChevronRight className="h-4 w-4 text-gray-400" />
+                        <div className="w-full bg-gray-100 rounded-full h-1">
+                          <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${(a.evidenceScore / 10) * 100}%` }}></div>
+                        </div>
                       </div>
                     </div>
                   ))}
+                  {assumptions.length === 0 && (
+                    <div className="col-span-full py-12 text-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                      <Lightbulb className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-500">No risky assumptions mapped yet. What must be true for your business to work?</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -417,21 +504,24 @@ const FounderDashboard: React.FC = () => {
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-bold text-gray-900">Validation Experiments</h3>
-                  <button 
+                  <div className="flex items-center space-x-4">
+                    <Link to="/experiments" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center">
+                      Manage All <ChevronRight className="h-4 w-4 ml-1" />
+                    </Link>
+                    <button 
                     onClick={async () => {
                       if (!selectedCompanyId) return;
                       await createExperiment({
                         companyId: selectedCompanyId,
                         hypothesis: 'If we offer a free trial, 20% will sign up.',
-                        testType: 'Landing Page',
+                        testType: TestType.LANDING_PAGE,
                         channel: 'LinkedIn',
                         offer: 'Free Trial',
-                        startDate: new Date().toISOString().split('T')[0],
-                        endDate: '',
-                        metric: 'Conversion Rate',
-                        result: '',
-                        learning: '',
-                        status: 'active'
+                        successMetric: 'Conversion Rate',
+                        active: true,
+                        startDate: new Date().toISOString(),
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
                       });
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 flex items-center"
@@ -439,20 +529,21 @@ const FounderDashboard: React.FC = () => {
                     <Plus className="h-4 w-4 mr-1" /> New Experiment
                   </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {experiments.map(e => (
                     <div key={e.id} className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
                       <div className="flex justify-between items-start mb-4">
-                        <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs font-bold uppercase">{e.testType}</span>
+                        <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs font-bold uppercase">{e.testType.replace('_', ' ')}</span>
                         <span className={cn(
                           "text-xs font-bold px-2 py-1 rounded",
-                          e.status === 'active' ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"
-                        )}>{e.status.toUpperCase()}</span>
+                          e.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"
+                        )}>{e.active ? 'ACTIVE' : 'CLOSED'}</span>
                       </div>
                       <h4 className="text-sm font-bold text-gray-900 mb-2">{e.hypothesis}</h4>
                       <div className="space-y-2 text-xs text-gray-500">
                         <p><span className="font-semibold">Channel:</span> {e.channel}</p>
-                        <p><span className="font-semibold">Metric:</span> {e.metric}</p>
+                        <p><span className="font-semibold">Metric:</span> {e.successMetric}</p>
                       </div>
                     </div>
                   ))}
@@ -464,15 +555,27 @@ const FounderDashboard: React.FC = () => {
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-bold text-gray-900">Traction Signals</h3>
-                  <button 
+                  <div className="flex items-center space-x-4">
+                    <Link to="/signals" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center">
+                      Manage All <ChevronRight className="h-4 w-4 ml-1" />
+                    </Link>
+                    <button 
                     onClick={async () => {
                       if (!selectedCompanyId) return;
                       await createSignal({
                         companyId: selectedCompanyId,
-                        type: 'waitlist',
-                        count: 5,
+                        signalDate: new Date().toISOString(),
+                        callsBooked: 0,
+                        waitlistSignups: 5,
+                        pilots: 0,
+                        lois: 0,
+                        preOrders: 0,
+                        payingCustomers: 0,
+                        revenue: 0,
+                        repeatUsage: 0,
                         notes: 'New signups from LinkedIn post.',
-                        date: new Date().toISOString().split('T')[0]
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
                       });
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 flex items-center"
@@ -480,22 +583,23 @@ const FounderDashboard: React.FC = () => {
                     <Plus className="h-4 w-4 mr-1" /> Log Signal
                   </button>
                 </div>
-                <div className="bg-white shadow-sm border border-gray-200 rounded-lg overflow-hidden">
+              </div>
+              <div className="bg-white shadow-sm border border-gray-200 rounded-lg overflow-hidden">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Count</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waitlist</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {signals.map(s => (
                         <tr key={s.id}>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 capitalize">{s.type}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-indigo-600 font-bold">+{s.count}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{s.date}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{format(new Date(s.signalDate), 'MMM d, yyyy')}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-indigo-600 font-bold">+{s.waitlistSignups}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-bold">${s.revenue}</td>
                           <td className="px-6 py-4 text-sm text-gray-500">{s.notes}</td>
                         </tr>
                       ))}
@@ -512,16 +616,20 @@ const FounderDashboard: React.FC = () => {
                   {readinessReviews.map(r => (
                     <div key={r.id} className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
                       <div className="flex justify-between items-start mb-4">
-                        <h4 className="text-sm font-bold text-gray-900 capitalize">{r.type.replace('_', ' ')} Review</h4>
+                        <h4 className="text-sm font-bold text-gray-900 capitalize">{r.reviewType.replace('_', ' ')} Review</h4>
                         <span className={cn(
                           "text-xs font-bold px-2 py-1 rounded",
                           r.status === 'ready' ? "bg-green-100 text-green-700" :
                           r.status === 'not_ready' ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
                         )}>{r.status.toUpperCase()}</span>
                       </div>
-                      <p className="text-sm text-gray-600 mb-4">{r.reasons}</p>
+                      <div className="space-y-2">
+                        {r.reasons.map((reason, idx) => (
+                          <p key={idx} className="text-sm text-gray-600">{reason}</p>
+                        ))}
+                      </div>
                       {r.missingItems.length > 0 && (
-                        <div className="space-y-2">
+                        <div className="mt-4 space-y-2">
                           <p className="text-xs font-bold text-gray-500 uppercase">Missing Items</p>
                           <ul className="list-disc list-inside text-xs text-red-600 space-y-1">
                             {r.missingItems.map((item, idx) => <li key={idx}>{item}</li>)}
@@ -529,7 +637,7 @@ const FounderDashboard: React.FC = () => {
                         </div>
                       )}
                       <div className="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-400">
-                        Reviewed by {r.reviewedBy} on {format(new Date(r.reviewedOn), 'MMM d, yyyy')}
+                        Reviewed on {format(new Date(r.reviewedAt), 'MMM d, yyyy')}
                       </div>
                     </div>
                   ))}

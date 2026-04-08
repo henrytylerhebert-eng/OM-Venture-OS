@@ -1,22 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../components/AuthProvider';
-import { 
-  getMentorAssignments, 
-  getCompanies, 
-  submitFeedback, 
-  getFeedback,
-  getInterviews,
-  getAssumptions,
-  getExperiments,
-  getSignals
-} from '../services/firestoreService';
-import { Company, MentorAssignment, Feedback, Interview, Assumption, Experiment, Signal } from '../types';
+import { getMentorAssignments } from '../services/mentorService';
+import { getCompanies } from '../services/companyService';
+import { submitFeedback, getFeedback } from '../services/feedbackService';
+import { getInterviews, getAssumptions, getExperiments, getSignals } from '../services/evidenceService';
+import { Company, MentorAssignment, Feedback, Interview, Assumption, Experiment, Signal, FeedbackRole } from '../types';
 import { MessageSquare, Calendar, User, ExternalLink, Lightbulb, FlaskConical, Signal as SignalIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { where } from 'firebase/firestore';
 
 const MentorDashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { profile, loading } = useAuth();
   const [assignments, setAssignments] = useState<MentorAssignment[]>([]);
   const [assignedCompanies, setAssignedCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
@@ -30,11 +24,11 @@ const MentorDashboard: React.FC = () => {
   const [signals, setSignals] = useState<Signal[]>([]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!profile?.personId) return;
     
     const unsubAssignments = getMentorAssignments((all) => {
       setAssignments(all);
-    }, [where('mentorUid', '==', user.uid)]);
+    }, [where('mentorId', '==', profile.personId)]);
 
     const unsubCompanies = getCompanies((all) => {
       const assignedIds = assignments.map(a => a.companyId);
@@ -45,7 +39,7 @@ const MentorDashboard: React.FC = () => {
       unsubAssignments();
       unsubCompanies();
     };
-  }, [user, assignments.length]);
+  }, [profile?.personId, assignments.length]);
 
   useEffect(() => {
     if (!selectedCompanyId) return;
@@ -67,13 +61,14 @@ const MentorDashboard: React.FC = () => {
 
   const handleSubmitFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !selectedCompanyId || !feedbackText) return;
+    if (!profile?.personId || !selectedCompanyId || !feedbackText) return;
 
     await submitFeedback({
-      mentorUid: user.uid,
+      meetingRequestId: 'manual_entry', // Or handle this differently
       companyId: selectedCompanyId,
-      content: feedbackText,
-      createdAt: new Date().toISOString()
+      submittedByRole: FeedbackRole.MENTOR,
+      internalNotes: feedbackText,
+      submittedAt: new Date().toISOString()
     });
 
     setFeedbackText('');
@@ -162,7 +157,7 @@ const MentorDashboard: React.FC = () => {
                     {assumptions.slice(0, 3).map(a => (
                       <div key={a.id} className="text-xs p-2 bg-gray-50 rounded border border-gray-100">
                         <p className="font-medium text-gray-900">{a.statement}</p>
-                        <p className="text-gray-500 mt-1 capitalize">{a.type} • Evidence: {a.evidence}/10</p>
+                        <p className="text-gray-500 mt-1 capitalize">{a.type} • Evidence: {a.evidenceScore}/5</p>
                       </div>
                     ))}
                     {assumptions.length === 0 && <p className="text-xs text-gray-500 italic">No assumptions logged.</p>}
@@ -174,9 +169,17 @@ const MentorDashboard: React.FC = () => {
                   </h4>
                   <div className="space-y-2">
                     {signals.slice(0, 3).map(s => (
-                      <div key={s.id} className="flex justify-between items-center text-xs p-2 bg-gray-50 rounded border border-gray-100">
-                        <span className="font-medium text-gray-900 capitalize">{s.type}</span>
-                        <span className="font-bold text-indigo-600">+{s.count}</span>
+                      <div key={s.id} className="flex flex-col text-xs p-2 bg-gray-50 rounded border border-gray-100">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium text-gray-900">Waitlist</span>
+                          <span className="font-bold text-indigo-600">+{s.waitlistSignups || 0}</span>
+                        </div>
+                        {s.revenue ? (
+                          <div className="flex justify-between items-center mt-1">
+                            <span className="font-medium text-gray-900">Revenue</span>
+                            <span className="font-bold text-green-600">${s.revenue}</span>
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                     {signals.length === 0 && <p className="text-xs text-gray-500 italic">No signals logged.</p>}
@@ -214,10 +217,10 @@ const MentorDashboard: React.FC = () => {
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center text-xs text-gray-500">
                         <Calendar className="h-3 w-3 mr-1" />
-                        {format(new Date(item.createdAt), 'MMM d, yyyy h:mm a')}
+                        {format(new Date(item.submittedAt), 'MMM d, yyyy h:mm a')}
                       </div>
                     </div>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.content}</p>
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.internalNotes}</p>
                   </div>
                 ))}
                 {companyFeedback.length === 0 && (

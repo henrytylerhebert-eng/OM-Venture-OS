@@ -1,18 +1,42 @@
 {
   "entities": {
-    "user": {
-      "title": "User",
-      "description": "A person in the system (OM staff, founder, mentor).",
+    "organization": {
+      "title": "Organization",
+      "description": "An entity in the ecosystem (OM, startup, mentor org, etc).",
       "type": "object",
       "properties": {
-        "uid": { "type": "string" },
-        "email": { "type": "string", "format": "email" },
-        "displayName": { "type": "string" },
-        "role": { "type": "string", "enum": ["om_admin", "om_staff", "founder", "mentor"] },
-        "photoURL": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["om", "startup", "mentor_org", "investor_org", "university", "partner"] },
+        "website": { "type": "string" },
+        "region": { "type": "string" },
+        "active": { "type": "boolean" },
+        "relationshipOwnerId": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "email", "role"]
+      "required": ["name", "type", "active", "createdAt", "updatedAt"]
+    },
+    "person": {
+      "title": "Person",
+      "description": "A person in the system (OM staff, founder, mentor, investor).",
+      "type": "object",
+      "properties": {
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "fullName": { "type": "string" },
+        "primaryEmail": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "organizationId": { "type": "string" },
+        "roleType": { "type": "string", "enum": ["om_admin", "om_staff", "founder", "startup_team", "mentor", "investor_reviewer", "investor_admin"] },
+        "title": { "type": "string" },
+        "linkedinUrl": { "type": "string" },
+        "active": { "type": "boolean" },
+        "authUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["firstName", "lastName", "fullName", "primaryEmail", "organizationId", "roleType", "active", "createdAt", "updatedAt"]
     },
     "company": {
       "title": "Company",
@@ -20,15 +44,19 @@
       "type": "object",
       "properties": {
         "name": { "type": "string" },
+        "organizationId": { "type": "string" },
+        "founderLeadPersonId": { "type": "string" },
         "description": { "type": "string" },
-        "status": { "type": "string", "enum": ["pending", "active", "inactive"] },
-        "stage": { "type": "string", "enum": ["Idea Development", "Customer Discovery", "Product Development", "Beta Testing", "Customer Acquisition", "Growth", "Alumni"] },
-        "progressScore": { "type": "number" },
-        "readinessNotes": { "type": "string" },
-        "founderUids": { "type": "array", "items": { "type": "string" } },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "website": { "type": "string" },
+        "membershipStatus": { "type": "string", "enum": ["active", "inactive", "alumni", "pending"] },
+        "confirmedMembershipLevel": { "type": "string" },
+        "active": { "type": "boolean" },
+        "omOwnerPersonId": { "type": "string" },
+        "currentPortfolioProgressId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "status", "stage"]
+      "required": ["name", "organizationId", "active", "createdAt", "updatedAt"]
     },
     "cohort": {
       "title": "Cohort",
@@ -36,12 +64,15 @@
       "type": "object",
       "properties": {
         "name": { "type": "string" },
-        "description": { "type": "string" },
-        "startDate": { "type": "string", "format": "date" },
-        "endDate": { "type": "string", "format": "date" },
-        "isActive": { "type": "boolean" }
+        "programType": { "type": "string", "enum": ["builder_1_0", "builder_2_0", "startup_circle", "mentor_program"] },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["planned", "active", "completed"] },
+        "programOwnerPersonId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "startDate", "isActive"]
+      "required": ["name", "programType", "status", "createdAt", "updatedAt"]
     },
     "cohortApplication": {
       "title": "Cohort Application",
@@ -49,12 +80,17 @@
       "type": "object",
       "properties": {
         "companyId": { "type": "string" },
-        "cohortId": { "type": "string" },
-        "founderUid": { "type": "string" },
-        "status": { "type": "string", "enum": ["pending", "approved", "denied"] },
-        "submittedAt": { "type": "string", "format": "date-time" }
+        "founderPersonId": { "type": "string" },
+        "requestedCohortId": { "type": "string" },
+        "submissionNotes": { "type": "string" },
+        "decision": { "type": "string", "enum": ["pending", "approved", "declined", "waitlist"] },
+        "fitNotes": { "type": "string" },
+        "decidedByPersonId": { "type": "string" },
+        "decidedAt": { "type": "string", "format": "date-time" },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["companyId", "cohortId", "founderUid", "status"]
+      "required": ["companyId", "founderPersonId", "requestedCohortId", "decision", "submittedAt", "updatedAt"]
     },
     "cohortParticipation": {
       "title": "Cohort Participation",
@@ -63,34 +99,123 @@
       "properties": {
         "companyId": { "type": "string" },
         "cohortId": { "type": "string" },
-        "status": { "type": "string", "enum": ["active", "completed", "dropped"] },
-        "joinedAt": { "type": "string", "format": "date-time" }
+        "founderLeadPersonId": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "completed", "withdrawn"] },
+        "joinDate": { "type": "string", "format": "date-time" },
+        "miroUrl": { "type": "string" },
+        "customerDiscoveryTrackerUrl": { "type": "string" },
+        "interviewTarget": { "type": "number" },
+        "interviewCount": { "type": "number" },
+        "homeworkStatus": { "type": "string", "enum": ["on_track", "behind", "complete"] },
+        "graduationReady": { "type": "boolean" },
+        "completionCertificateUrl": { "type": "string" },
+        "nextProgramEligible": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["companyId", "cohortId", "status"]
+      "required": ["companyId", "cohortId", "status", "interviewTarget", "interviewCount", "graduationReady", "nextProgramEligible", "createdAt", "updatedAt"]
+    },
+    "portfolioProgress": {
+      "title": "Portfolio Progress",
+      "description": "Tracking the stage and progress of a startup.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "recommendedStage": { "type": "string", "enum": ["idea_development", "customer_discovery", "product_development", "beta_testing", "customer_acquisition", "growth", "alumni"] },
+        "stageOverride": { "type": "string", "enum": ["idea_development", "customer_discovery", "product_development", "beta_testing", "customer_acquisition", "growth", "alumni"] },
+        "finalStage": { "type": "string", "enum": ["idea_development", "customer_discovery", "product_development", "beta_testing", "customer_acquisition", "growth", "alumni"] },
+        "progressScore": { "type": "number" },
+        "stageConfidence": { "type": "string", "enum": ["low", "medium", "high"] },
+        "fundingStage": { "type": "string", "enum": ["none", "friends_family", "pre_seed", "seed", "series_a_plus", "non_dilutive", "revenue_funded"] },
+        "primaryProofType": { "type": "string", "enum": ["interviews", "pattern", "mvp_live", "beta_users", "pilots", "lois", "revenue", "growth"] },
+        "primaryProofDetail": { "type": "string" },
+        "liveProduct": { "type": "boolean" },
+        "betaLive": { "type": "boolean" },
+        "revenueStarted": { "type": "boolean" },
+        "payingCustomersCount": { "type": "number" },
+        "nextMilestone": { "type": "string" },
+        "biggestBlocker": { "type": "string" },
+        "omOwnerPersonId": { "type": "string" },
+        "stageUpdatedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["companyId", "recommendedStage", "finalStage", "progressScore", "liveProduct", "betaLive", "revenueStarted", "payingCustomersCount", "stageUpdatedAt", "updatedAt"]
+    },
+    "mentor": {
+      "title": "Mentor",
+      "description": "A mentor profile.",
+      "type": "object",
+      "properties": {
+        "personId": { "type": "string" },
+        "organizationId": { "type": "string" },
+        "expertiseAreas": { "type": "array", "items": { "type": "string" } },
+        "stageFit": { "type": "array", "items": { "type": "string" } },
+        "geography": { "type": "string" },
+        "shareEmail": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "lastEngagedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["personId", "expertiseAreas", "stageFit", "shareEmail", "active", "createdAt", "updatedAt"]
     },
     "mentorAssignment": {
       "title": "Mentor Assignment",
       "description": "A mentor assigned to a company.",
       "type": "object",
       "properties": {
-        "mentorUid": { "type": "string" },
         "companyId": { "type": "string" },
-        "assignedBy": { "type": "string" },
-        "assignedAt": { "type": "string", "format": "date-time" }
+        "founderPersonId": { "type": "string" },
+        "mentorId": { "type": "string" },
+        "assignedByPersonId": { "type": "string" },
+        "assignmentType": { "type": "string", "enum": ["requested", "staff_matched", "milestone_based"] },
+        "goal": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "completed", "paused"] },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["mentorUid", "companyId"]
+      "required": ["companyId", "mentorId", "assignedByPersonId", "assignmentType", "status", "createdAt", "updatedAt"]
+    },
+    "meetingRequest": {
+      "title": "Meeting Request",
+      "description": "A request for a meeting between a founder and a mentor.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "founderPersonId": { "type": "string" },
+        "mentorId": { "type": "string" },
+        "mentorAssignmentId": { "type": "string" },
+        "requestedByPersonId": { "type": "string" },
+        "reason": { "type": "string" },
+        "programContext": { "type": "string" },
+        "status": { "type": "string", "enum": ["requested", "scheduled", "completed", "cancelled"] },
+        "meetingDate": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" },
+        "followUpNeeded": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["companyId", "founderPersonId", "mentorId", "requestedByPersonId", "status", "followUpNeeded", "createdAt", "updatedAt"]
     },
     "feedback": {
       "title": "Feedback",
-      "description": "Mentor feedback or meeting notes.",
+      "description": "Meeting notes and feedback.",
       "type": "object",
       "properties": {
-        "mentorUid": { "type": "string" },
+        "meetingRequestId": { "type": "string" },
         "companyId": { "type": "string" },
-        "content": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "founderPersonId": { "type": "string" },
+        "mentorId": { "type": "string" },
+        "submittedByRole": { "type": "string", "enum": ["founder", "mentor", "om_staff"] },
+        "overallRating": { "type": "number" },
+        "willingToFollowUp": { "type": "boolean" },
+        "shareableProof": { "type": "string" },
+        "internalNotes": { "type": "string" },
+        "submittedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["mentorUid", "companyId", "content"]
+      "required": ["meetingRequestId", "companyId", "submittedByRole", "submittedAt"]
     },
     "interview": {
       "title": "Interview",
@@ -98,16 +223,41 @@
       "type": "object",
       "properties": {
         "companyId": { "type": "string" },
-        "founderUid": { "type": "string" },
-        "segment": { "type": "string" },
-        "painIntensity": { "type": "number", "minimum": 1, "maximum": 10 },
-        "alternative": { "type": "string" },
-        "quote": { "type": "string" },
-        "spontaneous": { "type": "boolean" },
-        "followUp": { "type": "boolean" },
-        "date": { "type": "string", "format": "date-time" }
+        "cohortParticipationId": { "type": "string" },
+        "interviewerPersonId": { "type": "string" },
+        "intervieweeName": { "type": "string" },
+        "intervieweeSegment": { "type": "string" },
+        "interviewSource": { "type": "string" },
+        "interviewDate": { "type": "string", "format": "date-time" },
+        "problemTheme": { "type": "string" },
+        "painIntensity": { "type": "number", "minimum": 1, "maximum": 5 },
+        "mentionSpontaneous": { "type": "boolean" },
+        "currentAlternative": { "type": "string" },
+        "bestQuote": { "type": "string" },
+        "followUpNeeded": { "type": "boolean" },
+        "notes": { "type": "string" },
+        "countsTowardMinimum": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["companyId", "founderUid", "segment", "painIntensity"]
+      "required": [
+        "companyId", 
+        "interviewerPersonId", 
+        "intervieweeName", 
+        "intervieweeSegment", 
+        "interviewSource", 
+        "interviewDate", 
+        "problemTheme", 
+        "painIntensity", 
+        "mentionSpontaneous", 
+        "currentAlternative", 
+        "bestQuote", 
+        "followUpNeeded", 
+        "notes", 
+        "countsTowardMinimum", 
+        "createdAt", 
+        "updatedAt"
+      ]
     },
     "pattern": {
       "title": "Pattern",
@@ -115,14 +265,18 @@
       "type": "object",
       "properties": {
         "companyId": { "type": "string" },
-        "theme": { "type": "string" },
-        "mentions": { "type": "number" },
-        "avgPain": { "type": "number" },
-        "quote": { "type": "string" },
-        "confidence": { "type": "number" },
-        "status": { "type": "string", "enum": ["keep", "narrow", "pivot"] }
+        "problemTheme": { "type": "string" },
+        "numberOfMentions": { "type": "number" },
+        "averagePainIntensity": { "type": "number" },
+        "unpromptedMentions": { "type": "number" },
+        "representativeQuote": { "type": "string" },
+        "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+        "status": { "type": "string", "enum": ["keep", "narrow", "pivot"] },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["companyId", "theme", "status"]
+      "required": ["companyId", "problemTheme", "numberOfMentions", "status", "createdAt", "updatedAt"]
     },
     "assumption": {
       "title": "Assumption",
@@ -132,13 +286,18 @@
         "companyId": { "type": "string" },
         "statement": { "type": "string" },
         "type": { "type": "string", "enum": ["desirability", "feasibility", "viability"] },
-        "importance": { "type": "number" },
-        "evidence": { "type": "number" },
-        "status": { "type": "string" },
-        "patternId": { "type": "string" },
-        "experimentId": { "type": "string" }
+        "importanceScore": { "type": "number" },
+        "evidenceScore": { "type": "number" },
+        "priorityScore": { "type": "number" },
+        "status": { "type": "string", "enum": ["unknown", "weak", "strong", "validated", "invalidated"] },
+        "linkedPatternId": { "type": "string" },
+        "linkedExperimentId": { "type": "string" },
+        "notes": { "type": "string" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["companyId", "statement", "type"]
+      "required": ["companyId", "statement", "type", "importanceScore", "evidenceScore", "priorityScore", "status", "createdAt", "updatedAt"]
     },
     "experiment": {
       "title": "Experiment",
@@ -147,17 +306,20 @@
       "properties": {
         "companyId": { "type": "string" },
         "hypothesis": { "type": "string" },
-        "testType": { "type": "string" },
+        "testType": { "type": "string", "enum": ["landing_page", "concierge", "wizard_of_oz", "prototype", "pilot", "pricing_test", "outreach_test"] },
         "channel": { "type": "string" },
         "offer": { "type": "string" },
-        "startDate": { "type": "string", "format": "date" },
-        "endDate": { "type": "string", "format": "date" },
-        "metric": { "type": "string" },
+        "successMetric": { "type": "string" },
         "result": { "type": "string" },
         "learning": { "type": "string" },
-        "status": { "type": "string", "enum": ["active", "closed"] }
+        "nextAction": { "type": "string" },
+        "active": { "type": "boolean" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["companyId", "hypothesis", "status"]
+      "required": ["companyId", "hypothesis", "testType", "active", "createdAt", "updatedAt"]
     },
     "signal": {
       "title": "Signal",
@@ -165,12 +327,20 @@
       "type": "object",
       "properties": {
         "companyId": { "type": "string" },
-        "type": { "type": "string", "enum": ["call", "waitlist", "pilot", "loi", "preorder", "customer", "revenue", "repeat"] },
-        "count": { "type": "number" },
+        "signalDate": { "type": "string", "format": "date-time" },
+        "callsBooked": { "type": "number" },
+        "waitlistSignups": { "type": "number" },
+        "pilots": { "type": "number" },
+        "lois": { "type": "number" },
+        "preOrders": { "type": "number" },
+        "payingCustomers": { "type": "number" },
+        "revenue": { "type": "number" },
+        "repeatUsage": { "type": "number" },
         "notes": { "type": "string" },
-        "date": { "type": "string", "format": "date" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["companyId", "type", "count", "date"]
+      "required": ["companyId", "signalDate", "createdAt", "updatedAt"]
     },
     "readinessReview": {
       "title": "Readiness Review",
@@ -178,29 +348,91 @@
       "type": "object",
       "properties": {
         "companyId": { "type": "string" },
-        "type": { "type": "string", "enum": ["builder_completion", "mentor", "intern", "pitch", "investor"] },
-        "status": { "type": "string", "enum": ["ready", "not_ready", "pending"] },
-        "reasons": { "type": "string" },
+        "reviewType": { "type": "string", "enum": ["builder_completion", "mentor_ready", "intern_ready", "pitch_ready", "investor_ready"] },
+        "status": { "type": "string", "enum": ["ready", "not_ready", "needs_review"] },
+        "reasons": { "type": "array", "items": { "type": "string" } },
         "missingItems": { "type": "array", "items": { "type": "string" } },
-        "reviewedBy": { "type": "string" },
-        "reviewedOn": { "type": "string", "format": "date-time" }
+        "reviewedByPersonId": { "type": "string" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
       },
-      "required": ["companyId", "type", "status", "reviewedBy"]
+      "required": ["companyId", "reviewType", "status", "reviewedByPersonId", "reviewedAt"]
+    },
+    "investorOrganization": {
+      "title": "Investor Organization",
+      "description": "An organization that invests in startups.",
+      "type": "object",
+      "properties": {
+        "organizationId": { "type": "string" },
+        "investorType": { "type": "string", "enum": ["angel_group", "vc", "family_office", "economic_dev", "grant_org"] },
+        "stagePreference": { "type": "array", "items": { "type": "string" } },
+        "geography": { "type": "string" },
+        "focusAreas": { "type": "array", "items": { "type": "string" } },
+        "checkSizeOrFundingType": { "type": "string" },
+        "active": { "type": "boolean" },
+        "omRelationshipOwnerPersonId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["organizationId", "investorType", "stagePreference", "active", "createdAt", "updatedAt"]
+    },
+    "investorReviewAccess": {
+      "title": "Investor Review Access",
+      "description": "Access granted to an investor to review a company.",
+      "type": "object",
+      "properties": {
+        "investorOrganizationId": { "type": "string" },
+        "companyId": { "type": "string" },
+        "grantedByPersonId": { "type": "string" },
+        "grantedAt": { "type": "string", "format": "date-time" },
+        "accessStatus": { "type": "string", "enum": ["active", "expired", "revoked"] },
+        "reasonForAccess": { "type": "string" },
+        "expirationDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["investorOrganizationId", "companyId", "grantedByPersonId", "grantedAt", "accessStatus"]
+    },
+    "investorPipeline": {
+      "title": "Investor Pipeline",
+      "description": "Tracking a company's progress in an investor's pipeline.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "investorOrganizationId": { "type": "string" },
+        "omSponsorPersonId": { "type": "string" },
+        "readinessSnapshot": { "type": "string" },
+        "introStatus": { "type": "string", "enum": ["not_started", "intro_requested", "intro_made", "in_review", "passed", "advancing"] },
+        "introDate": { "type": "string", "format": "date-time" },
+        "deckUrl": { "type": "string" },
+        "dataRoomUrl": { "type": "string" },
+        "investorFeedback": { "type": "string" },
+        "nextStep": { "type": "string" },
+        "outcome": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["companyId", "investorOrganizationId", "introStatus", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
-    "/users/{uid}": { "schema": "user", "description": "User profiles and roles." },
+    "/organizations/{orgId}": { "schema": "organization", "description": "Organizations in the ecosystem." },
+    "/people/{personId}": { "schema": "person", "description": "People in the system." },
     "/companies/{companyId}": { "schema": "company", "description": "Startup company records." },
     "/cohorts/{cohortId}": { "schema": "cohort", "description": "Available cohort programs." },
     "/cohortApplications/{applicationId}": { "schema": "cohortApplication", "description": "Applications for cohorts." },
     "/cohortParticipations/{participationId}": { "schema": "cohortParticipation", "description": "Active cohort memberships." },
+    "/portfolioProgress/{progressId}": { "schema": "portfolioProgress", "description": "Tracking startup progress." },
+    "/mentors/{mentorId}": { "schema": "mentor", "description": "Mentor profiles." },
     "/mentorAssignments/{assignmentId}": { "schema": "mentorAssignment", "description": "Mentor-company links." },
+    "/meetingRequests/{meetingRequestId}": { "schema": "meetingRequest", "description": "Meeting requests." },
     "/feedback/{feedbackId}": { "schema": "feedback", "description": "Meeting notes and feedback." },
     "/interviews/{interviewId}": { "schema": "interview", "description": "Customer discovery interviews." },
     "/patterns/{patternId}": { "schema": "pattern", "description": "Synthesized problem patterns." },
     "/assumptions/{assumptionId}": { "schema": "assumption", "description": "Risky assumptions." },
     "/experiments/{experimentId}": { "schema": "experiment", "description": "Validation experiments." },
     "/signals/{signalId}": { "schema": "signal", "description": "Traction signals." },
-    "/readinessReviews/{reviewId}": { "schema": "readinessReview", "description": "Official readiness assessments." }
+    "/readinessReviews/{reviewId}": { "schema": "readinessReview", "description": "Official readiness assessments." },
+    "/investorOrganizations/{investorOrgId}": { "schema": "investorOrganization", "description": "Investor organizations." },
+    "/investorReviewAccess/{accessId}": { "schema": "investorReviewAccess", "description": "Access granted to investors." },
+    "/investorPipeline/{pipelineId}": { "schema": "investorPipeline", "description": "Investor pipeline tracking." }
   }
 }

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { signInWithGoogle } from '../firebase';
 import { useNavigate } from 'react-router-dom';
-import { createUserProfile, getUserProfile } from '../services/firestoreService';
-import { UserProfile } from '../types';
+import { createUserProfile, getUserProfile } from '../services/authService';
+import { UserProfile, RoleType } from '../types';
 
 const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -23,7 +23,7 @@ const Login: React.FC = () => {
           uid: user.uid,
           email: user.email || '',
           displayName: user.displayName || 'New User',
-          role: 'founder', // Default role
+          role: RoleType.FOUNDER, // Default role
           photoURL: user.photoURL || undefined,
           createdAt: new Date().toISOString()
         };

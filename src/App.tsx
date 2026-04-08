@@ -1,9 +1,18 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './components/AuthProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { RoleGuard } from './components/RoleGuard';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import SeedData from './pages/SeedData';
+import QAPage from './pages/QAPage';
+import DiscoveryInterviews from './pages/DiscoveryInterviews';
+import Patterns from './pages/Patterns';
+import Assumptions from './pages/Assumptions';
+import Experiments from './pages/Experiments';
+import Signals from './pages/Signals';
+import ReadinessQueue from './pages/ReadinessQueue';
 
 // Placeholder pages for other routes
 const Placeholder = ({ title }: { title: string }) => (
@@ -20,12 +29,87 @@ export default function App() {
         <Router>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/seed" element={<SeedData />} />
+            <Route path="/qa" element={<QAPage />} />
             
             <Route path="/" element={<Layout />}>
               <Route index element={<Dashboard />} />
-              <Route path="companies" element={<Placeholder title="Companies Management" />} />
-              <Route path="cohorts" element={<Placeholder title="Cohorts Management" />} />
-              <Route path="mentors" element={<Placeholder title="Mentors Management" />} />
+              
+              {/* Admin & Staff Only */}
+              <Route 
+                path="companies" 
+                element={
+                  <RoleGuard allowedRoles={['om_admin', 'om_staff']}>
+                    <Placeholder title="Companies Management" />
+                  </RoleGuard>
+                } 
+              />
+              <Route 
+                path="cohorts" 
+                element={
+                  <RoleGuard allowedRoles={['om_admin', 'om_staff']}>
+                    <Placeholder title="Cohorts Management" />
+                  </RoleGuard>
+                } 
+              />
+              <Route 
+                path="mentors" 
+                element={
+                  <RoleGuard allowedRoles={['om_admin', 'om_staff']}>
+                    <Placeholder title="Mentors Management" />
+                  </RoleGuard>
+                } 
+              />
+              <Route 
+                path="readiness" 
+                element={
+                  <RoleGuard allowedRoles={['om_admin', 'om_staff']}>
+                    <ReadinessQueue />
+                  </RoleGuard>
+                } 
+              />
+              
+              {/* Common Routes */}
+              <Route 
+                path="discovery" 
+                element={
+                  <RoleGuard allowedRoles={['founder', 'om_admin', 'om_staff', 'mentor']}>
+                    <DiscoveryInterviews />
+                  </RoleGuard>
+                } 
+              />
+              <Route 
+                path="patterns" 
+                element={
+                  <RoleGuard allowedRoles={['founder', 'om_admin', 'om_staff', 'mentor']}>
+                    <Patterns />
+                  </RoleGuard>
+                } 
+              />
+              <Route 
+                path="assumptions" 
+                element={
+                  <RoleGuard allowedRoles={['founder', 'om_admin', 'om_staff', 'mentor']}>
+                    <Assumptions />
+                  </RoleGuard>
+                } 
+              />
+              <Route 
+                path="experiments" 
+                element={
+                  <RoleGuard allowedRoles={['founder', 'om_admin', 'om_staff', 'mentor']}>
+                    <Experiments />
+                  </RoleGuard>
+                } 
+              />
+              <Route 
+                path="signals" 
+                element={
+                  <RoleGuard allowedRoles={['founder', 'om_admin', 'om_staff', 'mentor']}>
+                    <Signals />
+                  </RoleGuard>
+                } 
+              />
               <Route path="profile" element={<Placeholder title="My Profile" />} />
             </Route>
 

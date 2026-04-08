@@ -1,61 +1,39 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: users
-    // Fields: uid, email, displayName, role (om_admin, om_staff, founder, mentor), createdAt
-    //
-    // Collection: companies
-    // Fields: name, description, status (pending, active, inactive), stage, progressScore, readinessNotes, founderUids (list), createdAt
-    //
-    // Collection: cohorts
-    // Fields: name, description, startDate, endDate, isActive
-    //
-    // Collection: cohortApplications
-    // Fields: companyId, cohortId, founderUid, status (pending, approved, denied), submittedAt
-    //
-    // Collection: cohortParticipations
-    // Fields: companyId, cohortId, status (active, completed, dropped), joinedAt
-    //
-    // Collection: mentorAssignments
-    // Fields: mentorUid, companyId, assignedBy, assignedAt
-    //
-    // Collection: feedback
-    // Fields: mentorUid, companyId, content, createdAt
-    //
-    // ===============================================================
-
+    
     // ===============================================================
     // Helper Functions
     // ===============================================================
-
+    
     function isAuthenticated() {
       return request.auth != null;
     }
-
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
-
+    
     function isAdmin() {
-      return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'om_admin' ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'om_staff' ||
+      return isAuthenticated() && 
+        (getUserData().role == 'om_admin' || 
          (request.auth.token.email == "tyler@opportunitymachine.org" && request.auth.token.email_verified == true));
     }
-
-    function isFounderOf(companyId) {
-      return isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/companies/$(companyId)).data.founderUids;
+    
+    function isStaff() {
+      return isAuthenticated() && (getUserData().role == 'om_staff' || isAdmin());
     }
-
-    function isAssignedMentor(companyId) {
-      // This is a bit complex for rules, usually we'd query mentorAssignments.
-      // For Phase 1, we'll check if there's an assignment record.
-      return isAuthenticated() && exists(/databases/$(database)/documents/mentorAssignments/$(request.auth.uid + "_" + companyId));
+    
+    function isFounder() {
+      return isAuthenticated() && getUserData().role == 'founder';
+    }
+    
+    function isMentor() {
+      return isAuthenticated() && getUserData().role == 'mentor';
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
     }
 
     function hasOnlyAllowedFields(fields) {
@@ -67,101 +45,138 @@ service cloud.firestore {
     }
 
     // ===============================================================
-    // Domain Validators
+    // Collection Rules
     // ===============================================================
 
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'email', 'role']) &&
-             data.uid == request.auth.uid &&
-             isValidEmail(data.email) &&
-             data.role in ['om_admin', 'om_staff', 'founder', 'mentor'];
-    }
-
-    function isValidCompany(data) {
-      return data.keys().hasAll(['name', 'status', 'stage', 'founderUids']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.status in ['pending', 'active', 'inactive'] &&
-             data.stage is string &&
-             data.founderUids is list;
-    }
-
-    // ===============================================================
-    // Rules
-    // ===============================================================
-
+    // User Profiles (Auth link)
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'founder' || isAdmin());
-      allow update: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+      allow create: if isOwner(userId) && 
+        hasOnlyAllowedFields(['uid', 'email', 'displayName', 'role', 'photoURL', 'createdAt', 'personId']) &&
+        request.resource.data.role == 'founder'; // Default role for self-signup
+      allow update: if isOwner(userId) && 
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'uid', 'email']));
+      allow write: if isAdmin();
     }
 
+    // Organizations
+    match /organizations/{orgId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
+    }
+
+    // People
+    match /people/{personId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
+      allow update: if isAuthenticated() && request.auth.uid == resource.data.authUid;
+    }
+
+    // Companies
     match /companies/{companyId} {
-      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid in resource.data.founderUids) || isAssignedMentor(companyId);
-      allow create: if isAuthenticated() && isValidCompany(request.resource.data);
-      allow update: if isAdmin() || (isAuthenticated() && request.auth.uid in resource.data.founderUids && 
-                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'description']));
+      allow read: if isAuthenticated();
+      allow create: if isFounder() || isStaff();
+      allow update: if isStaff() || 
+        (isFounder() && getUserData().personId == resource.data.founderLeadPersonId &&
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['membershipStatus', 'omOwnerPersonId', 'currentPortfolioProgressId']));
     }
 
+    // Cohorts
     match /cohorts/{cohortId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if isStaff();
     }
 
-    match /cohortApplications/{applicationId} {
-      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.founderUid);
-      allow create: if isAuthenticated() && request.resource.data.founderUid == request.auth.uid;
-      allow update: if isAdmin();
+    // Cohort Applications
+    match /cohortApplications/{appId} {
+      allow read: if isStaff() || (isFounder() && getUserData().personId == resource.data.founderPersonId);
+      allow create: if isFounder() || isStaff();
+      allow update: if isStaff();
     }
 
-    match /cohortParticipations/{participationId} {
-      allow read: if isAdmin() || (isAuthenticated() && isFounderOf(resource.data.companyId));
-      allow write: if isAdmin();
+    // Cohort Participations
+    match /cohortParticipations/{partId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
     }
 
-    match /mentorAssignments/{assignmentId} {
-      allow read: if isAdmin() || (isAuthenticated() && (request.auth.uid == resource.data.mentorUid || isFounderOf(resource.data.companyId)));
-      allow write: if isAdmin();
+    // Portfolio Progress
+    match /portfolioProgress/{progId} {
+      allow read: if isAuthenticated();
+      allow create: if isStaff();
+      allow update: if isStaff();
     }
 
-    match /feedback/{feedbackId} {
-      allow read: if isAdmin() || (isAuthenticated() && (request.auth.uid == resource.data.mentorUid || isFounderOf(resource.data.companyId)));
-      allow create: if isAuthenticated() && request.resource.data.mentorUid == request.auth.uid;
-      allow update: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.mentorUid);
+    // Mentors
+    match /mentors/{mentorId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
     }
 
-    match /interviews/{interviewId} {
-      allow read: if isAdmin() || (isAuthenticated() && (request.auth.uid == resource.data.founderUid || isAssignedMentor(resource.data.companyId)));
-      allow create: if isAuthenticated() && request.resource.data.founderUid == request.auth.uid;
-      allow update: if isAuthenticated() && request.auth.uid == resource.data.founderUid;
+    // Mentor Assignments
+    match /mentorAssignments/{assignId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
     }
 
-    match /patterns/{patternId} {
-      allow read: if isAdmin() || isFounderOf(resource.data.companyId) || isAssignedMentor(resource.data.companyId);
-      allow write: if isAdmin() || isFounderOf(request.resource.data.companyId);
+    // Meeting Requests
+    match /meetingRequests/{reqId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
     }
 
-    match /assumptions/{assumptionId} {
-      allow read: if isAdmin() || isFounderOf(resource.data.companyId) || isAssignedMentor(resource.data.companyId);
-      allow write: if isAdmin() || isFounderOf(request.resource.data.companyId);
+    // Feedback
+    match /feedback/{feedId} {
+      allow read: if isStaff() || isMentor() || isFounder();
+      allow create: if isAuthenticated();
     }
 
-    match /experiments/{experimentId} {
-      allow read: if isAdmin() || isFounderOf(resource.data.companyId) || isAssignedMentor(resource.data.companyId);
-      allow write: if isAdmin() || isFounderOf(request.resource.data.companyId);
+    // Phase 2: Evidence Engine
+    match /interviews/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff() || (isFounder() && getUserData().personId == resource.data.interviewerPersonId);
     }
 
-    match /signals/{signalId} {
-      allow read: if isAdmin() || isFounderOf(resource.data.companyId) || isAssignedMentor(resource.data.companyId);
-      allow write: if isAdmin() || isFounderOf(request.resource.data.companyId);
+    match /patterns/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff() || isFounder();
     }
 
-    match /readinessReviews/{reviewId} {
-      allow read: if isAdmin() || isFounderOf(resource.data.companyId) || isAssignedMentor(resource.data.companyId);
-      allow write: if isAdmin();
+    match /assumptions/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff() || isFounder();
     }
 
-    match /test/connection {
-      allow read: if true;
+    match /experiments/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff() || isFounder();
+    }
+
+    match /signals/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff() || isFounder();
+    }
+
+    match /readinessReviews/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
+    }
+
+    // Phase 3: Investor Relations
+    match /investorOrganizations/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
+    }
+
+    match /investorReviewAccess/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
+    }
+
+    match /investorPipeline/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
     }
   }
 }
