@@ -2,8 +2,7 @@ import React from 'react';
 import { Navigate, Outlet, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthProvider';
 import { logout } from '../firebase';
-import { LayoutDashboard, Building2, Users, ClipboardList, LogOut, UserCircle, MessageSquare, Lightbulb, FlaskConical, Signal as SignalIcon, ClipboardCheck, Brain } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { LayoutDashboard, Building2, Users, ClipboardList, LogOut, UserCircle, MessageSquare, Lightbulb, FlaskConical, Signal as SignalIcon, ClipboardCheck, Brain, Sparkles } from 'lucide-react';
 
 const Layout: React.FC = () => {
   const { user, profile, loading } = useAuth();
@@ -19,6 +18,7 @@ const Layout: React.FC = () => {
 
   const navItems = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
+    { label: 'Copilot', icon: Sparkles, path: '/copilot', roles: ['founder', 'om_admin', 'om_staff', 'mentor'] },
     { label: 'Interviews', icon: MessageSquare, path: '/discovery', roles: ['founder', 'om_admin', 'om_staff', 'mentor'] },
     { label: 'Patterns', icon: Brain, path: '/patterns', roles: ['founder', 'om_admin', 'om_staff', 'mentor'] },
     { label: 'Assumptions', icon: Lightbulb, path: '/assumptions', roles: ['founder', 'om_admin', 'om_staff', 'mentor'] },

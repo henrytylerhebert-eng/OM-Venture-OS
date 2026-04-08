@@ -519,3 +519,68 @@ export interface UserProfile {
   createdAt: string;
   personId?: string; // Link to people collection
 }
+
+export type CopilotEngineProvider = 'heuristic' | 'openai';
+export type CopilotReadinessStatus = 'not_ready' | 'emerging' | 'ready';
+export type CopilotRiskArea = 'desirability' | 'feasibility' | 'viability' | 'fundraising' | 'execution';
+
+export interface VentureCopilotInsight {
+  theme: string;
+  evidence: string;
+  confidence: StageConfidence;
+  nextMove: string;
+}
+
+export interface VentureCopilotRisk {
+  area: CopilotRiskArea;
+  severity: StageConfidence;
+  title: string;
+  detail: string;
+}
+
+export interface VentureCopilotRecommendation {
+  title: string;
+  reason: string;
+  owner: string;
+  successMetric: string;
+}
+
+export interface VentureCopilotReadiness {
+  status: CopilotReadinessStatus;
+  rationale: string;
+  missingProof: string[];
+  nextMilestone: string;
+}
+
+export interface VentureCopilotAnalysis {
+  executiveSummary: string;
+  momentumScore: number;
+  confidence: StageConfidence;
+  marketPulse: string;
+  tractionNarrative: string;
+  problemInsights: VentureCopilotInsight[];
+  riskMap: VentureCopilotRisk[];
+  recommendedExperiments: VentureCopilotRecommendation[];
+  investorReadiness: VentureCopilotReadiness;
+  coachQuestions: string[];
+}
+
+export interface VentureCopilotRequest {
+  company: Company;
+  interviews: Interview[];
+  patterns: Pattern[];
+  assumptions: Assumption[];
+  experiments: Experiment[];
+  signals: Signal[];
+  readinessReviews: ReadinessReview[];
+  focusPrompt?: string;
+}
+
+export interface VentureCopilotResponse {
+  engine: {
+    provider: CopilotEngineProvider;
+    model: string;
+  };
+  generatedAt: string;
+  analysis: VentureCopilotAnalysis;
+}
