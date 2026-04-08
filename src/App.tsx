@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import SeedData from './pages/SeedData';
 import QAPage from './pages/QAPage';
+import Copilot from './pages/Copilot';
 import DiscoveryInterviews from './pages/DiscoveryInterviews';
 import Patterns from './pages/Patterns';
 import Assumptions from './pages/Assumptions';
@@ -70,6 +71,14 @@ export default function App() {
               />
               
               {/* Common Routes */}
+              <Route 
+                path="copilot"
+                element={
+                  <RoleGuard allowedRoles={['founder', 'om_admin', 'om_staff', 'mentor']}>
+                    <Copilot />
+                  </RoleGuard>
+                }
+              />
               <Route 
                 path="discovery" 
                 element={
