@@ -1,41 +1,162 @@
-import React, { useEffect, useState } from 'react';
-import { useAuth } from '../components/AuthProvider';
-import { getMentorAssignments } from '../services/mentorService';
-import { getCompanies } from '../services/companyService';
-import { submitFeedback, getFeedback } from '../services/feedbackService';
-import { getInterviews, getAssumptions, getExperiments, getSignals } from '../services/evidenceService';
-import { getPortfolioProgress } from '../services/progressService';
-import { Company, MentorAssignment, Feedback, Interview, Assumption, Experiment, Signal, FeedbackRole, PortfolioProgress } from '../types';
-import { MessageSquare, Calendar, User, ExternalLink, Lightbulb, FlaskConical, Signal as SignalIcon } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { where } from 'firebase/firestore';
-import { formatStageLabel } from '../lib/roleRouting';
+import {
+  AlertCircle,
+  Calendar,
+  ClipboardCheck,
+  ExternalLink,
+  Lightbulb,
+  MessageSquare,
+  ShieldCheck,
+  Target,
+  User,
+} from 'lucide-react';
+import { useAuth } from '../components/AuthProvider';
+import { getCompanies } from '../services/companyService';
+import {
+  buildCompanyEvidenceContextFromCurrentData,
+  buildCompanyEvidenceNarrativeBrief,
+  buildCompanyEvidenceQualityFlags,
+} from '../services/companyEvidenceContextService';
+import {
+  getAssumptions,
+  getExperiments,
+  getInterviews,
+  getPatterns,
+  getSignals,
+} from '../services/evidenceService';
+import { getFeedback, getMeetingRequests, submitFeedback } from '../services/feedbackService';
+import { getMentorAssignments } from '../services/mentorService';
+import { getPortfolioProgress, getReadinessReviews } from '../services/progressService';
+import { buildCompanyOperatingInsight } from '../lib/companyInsights';
+import {
+  AssignmentStatus,
+  Assumption,
+  Company,
+  CompanyEvidenceReviewGoal,
+  Experiment,
+  Feedback,
+  FeedbackRole,
+  Interview,
+  MeetingRequest,
+  MeetingStatus,
+  MentorAssignment,
+  Pattern,
+  PortfolioProgress,
+  ReadinessReview,
+  ReadinessStatus,
+  ReadinessType,
+  Signal,
+  StageConfidence,
+} from '../types';
+import { cn } from '../lib/utils';
+
+const phaseGuidanceByStage: Record<string, string> = {
+  idea_development: 'Keep mentor guidance narrow. Help the founder sharpen the problem before they widen the concept.',
+  customer_discovery: 'Stay close to customer pain, current alternatives, and sharper interview follow-through.',
+  product_development: 'Push for clear learning goals before the founder adds more build scope.',
+  beta_testing: 'Keep support focused on what the test is trying to prove and what signal should move next.',
+  customer_acquisition: 'Treat early market movement as evidence to interpret, not as automatic readiness.',
+  growth: 'Stay anchored in what is verified and what still needs review as the company scales.',
+  alumni: 'Support the founder with context, but avoid treating alumni status as current Builder proof.',
+};
+
+const confidenceBadgeClass = (value: 'verified' | 'reported' | 'inference' | 'missing') =>
+  cn(
+    'rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]',
+    value === 'verified' && 'bg-emerald-100 text-emerald-700',
+    value === 'reported' && 'bg-amber-100 text-amber-700',
+    value === 'inference' && 'bg-sky-100 text-sky-700',
+    value === 'missing' && 'bg-slate-200 text-slate-700'
+  );
+
+const qualityFlagClass = (severity: StageConfidence) =>
+  cn(
+    'rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]',
+    severity === StageConfidence.HIGH && 'bg-rose-100 text-rose-700',
+    severity === StageConfidence.MEDIUM && 'bg-amber-100 text-amber-700',
+    severity === StageConfidence.LOW && 'bg-slate-200 text-slate-700'
+  );
+
+const meetingStatusClass = (status?: MeetingStatus) =>
+  cn(
+    'rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]',
+    status === MeetingStatus.COMPLETED && 'bg-emerald-100 text-emerald-700',
+    status === MeetingStatus.SCHEDULED && 'bg-sky-100 text-sky-700',
+    status === MeetingStatus.REQUESTED && 'bg-amber-100 text-amber-700',
+    status === MeetingStatus.CANCELLED && 'bg-slate-200 text-slate-700'
+  );
+
+const sortByDateDesc = <T,>(items: T[], pickDate: (item: T) => string | undefined) =>
+  items
+    .slice()
+    .sort((left, right) => {
+      const leftTime = new Date(pickDate(left) || 0).getTime();
+      const rightTime = new Date(pickDate(right) || 0).getTime();
+      return rightTime - leftTime;
+    });
+
+const formatDirectionLabel = (value: string) => value.replace(/_/g, ' ');
+
+const getPatternSourceInterviews = (pattern: Pattern, interviews: Interview[]) => {
+  if (pattern.sourceInterviewIds.length > 0) {
+    const linkedIds = new Set(pattern.sourceInterviewIds);
+    return interviews.filter((interview) => linkedIds.has(interview.id));
+  }
+
+  return interviews.filter(
+    (interview) => interview.problemTheme.trim().toLowerCase() === pattern.problemTheme.trim().toLowerCase()
+  );
+};
+
+const getTopCurrentAlternative = (pattern: Pattern, interviews: Interview[]) => {
+  const alternatives = getPatternSourceInterviews(pattern, interviews).reduce<Record<string, number>>((acc, interview) => {
+    const currentAlternative = interview.currentAlternative.trim();
+    if (!currentAlternative) {
+      return acc;
+    }
+
+    acc[currentAlternative] = (acc[currentAlternative] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(alternatives).sort((left, right) => right[1] - left[1])[0]?.[0];
+};
 
 const MentorDashboard: React.FC = () => {
-  const { profile, loading } = useAuth();
+  const { profile } = useAuth();
   const [assignments, setAssignments] = useState<MentorAssignment[]>([]);
-  const [assignedCompanies, setAssignedCompanies] = useState<Company[]>([]);
+  const [allCompanies, setAllCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
   const [companyFeedback, setCompanyFeedback] = useState<Feedback[]>([]);
+  const [meetingRequests, setMeetingRequests] = useState<MeetingRequest[]>([]);
   const [portfolioProgress, setPortfolioProgress] = useState<PortfolioProgress[]>([]);
-
-  // Evidence State
   const [interviews, setInterviews] = useState<Interview[]>([]);
+  const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [assumptions, setAssumptions] = useState<Assumption[]>([]);
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
+  const [readinessReviews, setReadinessReviews] = useState<ReadinessReview[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!profile?.personId) return;
-    
-    const unsubAssignments = getMentorAssignments((all) => {
-      setAssignments(all);
-    }, [where('mentorId', '==', profile.personId)]);
+    if (!profile?.personId) {
+      return undefined;
+    }
 
-    const unsubCompanies = getCompanies((all) => {
-      const assignedIds = assignments.map(a => a.companyId);
-      setAssignedCompanies(all.filter(c => assignedIds.includes(c.id)));
+    const unsubAssignments = getMentorAssignments(
+      (allAssignments) => {
+        setAssignments(
+          allAssignments.filter((assignment) => assignment.status === AssignmentStatus.ACTIVE)
+        );
+      },
+      [where('mentorId', '==', profile.personId)]
+    );
+    const unsubCompanies = getCompanies((companies) => {
+      setAllCompanies(companies);
+      setLoading(false);
     });
     const unsubProgress = getPortfolioProgress(setPortfolioProgress);
 
@@ -44,209 +165,529 @@ const MentorDashboard: React.FC = () => {
       unsubCompanies();
       unsubProgress();
     };
-  }, [profile?.personId, assignments.length]);
+  }, [profile?.personId]);
+
+  const assignedCompanies = useMemo(() => {
+    const assignedCompanyIds = new Set(assignments.map((assignment) => assignment.companyId));
+    return allCompanies.filter((company) => assignedCompanyIds.has(company.id));
+  }, [allCompanies, assignments]);
 
   useEffect(() => {
-    if (!selectedCompanyId) return;
-    
+    setSelectedCompanyId((current) => {
+      if (current && assignedCompanies.some((company) => company.id === current)) {
+        return current;
+      }
+
+      return assignedCompanies[0]?.id || null;
+    });
+  }, [assignedCompanies]);
+
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      return undefined;
+    }
+
     const unsubFeedback = getFeedback(setCompanyFeedback, selectedCompanyId);
+    const unsubMeetingRequests = getMeetingRequests(setMeetingRequests, [where('companyId', '==', selectedCompanyId)]);
     const unsubInterviews = getInterviews(setInterviews, selectedCompanyId);
+    const unsubPatterns = getPatterns(setPatterns, selectedCompanyId);
     const unsubAssumptions = getAssumptions(setAssumptions, selectedCompanyId);
     const unsubExperiments = getExperiments(setExperiments, selectedCompanyId);
     const unsubSignals = getSignals(setSignals, selectedCompanyId);
+    const unsubReadiness = getReadinessReviews(setReadinessReviews, selectedCompanyId);
 
     return () => {
       unsubFeedback();
+      unsubMeetingRequests();
       unsubInterviews();
+      unsubPatterns();
       unsubAssumptions();
       unsubExperiments();
       unsubSignals();
+      unsubReadiness();
     };
   }, [selectedCompanyId]);
 
-  const handleSubmitFeedback = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!profile?.personId || !selectedCompanyId || !feedbackText) return;
+  const selectedCompany = assignedCompanies.find((company) => company.id === selectedCompanyId);
+  const selectedAssignment = assignments.find(
+    (assignment) => assignment.companyId === selectedCompanyId && assignment.status === AssignmentStatus.ACTIVE
+  );
+  const selectedInsight = useMemo(
+    () =>
+      selectedCompany
+        ? buildCompanyOperatingInsight({
+            interviews,
+            patterns,
+            assumptions,
+            experiments,
+            signals,
+            reviews: readinessReviews,
+            progress: portfolioProgress.find((progress) => progress.companyId === selectedCompany.id),
+            mentorAssignments: assignments.filter((assignment) => assignment.companyId === selectedCompany.id),
+          })
+        : null,
+    [assumptions, assignments, experiments, interviews, patterns, portfolioProgress, readinessReviews, selectedCompany, signals]
+  );
+  const selectedEvidenceContext = useMemo(
+    () =>
+      selectedCompany
+        ? buildCompanyEvidenceContextFromCurrentData({
+            company: selectedCompany,
+            aliases: [],
+            interviews,
+            patterns,
+            reviewGoal: CompanyEvidenceReviewGoal.MENTOR_MATCH,
+            todayDate: new Date().toISOString(),
+          })
+        : null,
+    [interviews, patterns, selectedCompany]
+  );
+  const selectedEvidenceNarrative = useMemo(
+    () => (selectedEvidenceContext ? buildCompanyEvidenceNarrativeBrief(selectedEvidenceContext) : ''),
+    [selectedEvidenceContext]
+  );
+  const evidenceFlags = useMemo(
+    () => (selectedEvidenceContext ? buildCompanyEvidenceQualityFlags(selectedEvidenceContext.evidenceQuality) : []),
+    [selectedEvidenceContext]
+  );
+  const evidenceConfidenceCounts = useMemo(() => {
+    if (!selectedEvidenceContext) {
+      return { verified: 0, reported: 0, inference: 0, missing: 0 };
+    }
+
+    return selectedEvidenceContext.timeline.reduce(
+      (acc, entry) => {
+        acc[entry.confidenceClass] += 1;
+        return acc;
+      },
+      { verified: 0, reported: 0, inference: 0, missing: 0 }
+    );
+  }, [selectedEvidenceContext]);
+  const missingCoverageCount = useMemo(
+    () =>
+      selectedEvidenceContext
+        ? Object.values(selectedEvidenceContext.sourceCoverage).filter((status) => status !== 'present').length
+        : 0,
+    [selectedEvidenceContext]
+  );
+  const strongestPatterns = useMemo(
+    () =>
+      patterns
+        .slice()
+        .sort(
+          (left, right) =>
+            right.numberOfMentions - left.numberOfMentions ||
+            right.averagePainIntensity - left.averagePainIntensity ||
+            right.unpromptedMentions - left.unpromptedMentions
+        )
+        .slice(0, 3),
+    [patterns]
+  );
+  const majorUnknowns = useMemo(() => {
+    if (!selectedEvidenceContext || !selectedInsight) {
+      return [];
+    }
+
+    return Array.from(
+      new Set([
+        ...selectedEvidenceContext.customerDiscovery.unknowns,
+        ...selectedInsight.proofGaps,
+      ])
+    ).slice(0, 4);
+  }, [selectedEvidenceContext, selectedInsight]);
+  const mentorReadyReview = useMemo(
+    () =>
+      readinessReviews
+        .filter((review) => review.reviewType === ReadinessType.MENTOR_READY)
+        .sort((left, right) => new Date(right.reviewedAt).getTime() - new Date(left.reviewedAt).getTime())[0],
+    [readinessReviews]
+  );
+  const recentMeetingRequests = useMemo(
+    () =>
+      sortByDateDesc<MeetingRequest>(
+        meetingRequests,
+        (request) => request.meetingDate || request.updatedAt
+      ).slice(0, 3),
+    [meetingRequests]
+  );
+  const recentNotes = useMemo(
+    () => sortByDateDesc<Feedback>(companyFeedback, (item) => item.submittedAt).slice(0, 3),
+    [companyFeedback]
+  );
+
+  const handleSubmitFeedback = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!profile?.personId || !selectedCompanyId || !feedbackText.trim()) {
+      return;
+    }
+
+    const latestMeetingRequest = recentMeetingRequests[0];
 
     await submitFeedback({
-      meetingRequestId: 'manual_entry', // Or handle this differently
+      meetingRequestId: latestMeetingRequest?.id || `mentor_workspace_note_${selectedCompanyId}`,
       companyId: selectedCompanyId,
+      mentorId: profile.personId,
       submittedByRole: FeedbackRole.MENTOR,
-      internalNotes: feedbackText,
-      submittedAt: new Date().toISOString()
+      internalNotes: feedbackText.trim(),
+      submittedAt: new Date().toISOString(),
     });
 
     setFeedbackText('');
   };
 
-  const selectedCompany = assignedCompanies.find(c => c.id === selectedCompanyId);
-  const getCompanyStage = (companyId: string) =>
-    formatStageLabel(portfolioProgress.find((progress) => progress.companyId === companyId)?.finalStage);
+  if (loading) {
+    return <div className="p-8 text-sm text-slate-500">Loading mentor workspace...</div>;
+  }
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-bold text-gray-900">Mentor Workspace</h1>
-        <p className="text-gray-500">Support assigned founders with scoped evidence review, current phase context, and actionable notes.</p>
+      <header className="space-y-3">
+        <div className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-sky-800">
+          Mentor Workspace
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Support assigned founders with proof-aware context.</h1>
+          <p className="max-w-3xl text-sm leading-6 text-slate-600">
+            This surface is mentor-scoped. It shows current Builder phase, strongest evidence, major unknowns, and meeting context without turning thin records into readiness claims.
+          </p>
+        </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Assigned Startups List */}
-        <div className="lg:col-span-1 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center">
-            <User className="h-5 w-5 mr-2" /> Assigned Startups
-          </h2>
-          <div className="space-y-3">
-            {assignedCompanies.map((company) => (
-              <button
-                key={company.id}
-                onClick={() => setSelectedCompanyId(company.id)}
-                className={`w-full text-left p-4 rounded-lg border transition-all ${
-                  selectedCompanyId === company.id 
-                    ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
-                    : 'bg-white border-gray-200 hover:border-indigo-200'
-                }`}
-              >
-                <h3 className="font-bold text-gray-900">{company.name}</h3>
-                <p className="text-xs text-gray-500 mt-1 capitalize">{getCompanyStage(company.id)}</p>
-              </button>
-            ))}
-            {assignedCompanies.length === 0 && (
-              <div className="bg-white p-6 text-center rounded-lg border border-dashed border-gray-300">
-                <p className="text-sm text-gray-500">No startups assigned yet.</p>
-              </div>
-            )}
-          </div>
-        </div>
+      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.45fr]">
+        <aside className="space-y-4">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center gap-2">
+              <User className="h-5 w-5 text-slate-500" />
+              <h2 className="text-lg font-semibold text-slate-950">Assigned Companies</h2>
+            </div>
+            <p className="mt-1 text-sm text-slate-500">Mentor view stays limited to active assignments only.</p>
 
-        {/* Company Details & Evidence */}
-        <div className="lg:col-span-2 space-y-6">
-          {selectedCompany ? (
-            <>
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-900">{selectedCompany.name}</h2>
-                    <p className="text-sm text-gray-500 mt-1">{selectedCompany.description || 'No description provided.'}</p>
-                  </div>
-                  <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold">
-                    {getCompanyStage(selectedCompany.id)}
-                  </span>
-                </div>
-                
-                <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="p-3 bg-gray-50 rounded-md text-center">
-                    <p className="text-[10px] text-gray-500 uppercase font-bold">Interviews</p>
-                    <p className="text-lg font-bold text-gray-900">{interviews.length}</p>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded-md text-center">
-                    <p className="text-[10px] text-gray-500 uppercase font-bold">Assumptions</p>
-                    <p className="text-lg font-bold text-gray-900">{assumptions.length}</p>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded-md text-center">
-                    <p className="text-[10px] text-gray-500 uppercase font-bold">Experiments</p>
-                    <p className="text-lg font-bold text-gray-900">{experiments.length}</p>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded-md text-center">
-                    <p className="text-[10px] text-gray-500 uppercase font-bold">Signals</p>
-                    <p className="text-lg font-bold text-gray-900">{signals.length}</p>
-                  </div>
-                </div>
-              </div>
+            <div className="mt-5 space-y-3">
+              {assignedCompanies.length > 0 ? (
+                assignedCompanies.map((company) => {
+                  const companyProgress = portfolioProgress.find((progress) => progress.companyId === company.id);
+                  const phaseLabel = companyProgress
+                    ? phaseGuidanceByStage[companyProgress.finalStage] || 'Current founder phase is recorded, but the evidence picture still needs a direct review.'
+                    : 'No explicit phase record is attached yet. Open the workspace to review the current evidence picture directly.';
 
-              {/* Evidence Review for Mentors */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                  <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center">
-                    <Lightbulb className="h-4 w-4 mr-2 text-yellow-500" /> Top Assumptions
-                  </h4>
-                  <div className="space-y-2">
-                    {assumptions.slice(0, 3).map(a => (
-                      <div key={a.id} className="text-xs p-2 bg-gray-50 rounded border border-gray-100">
-                        <p className="font-medium text-gray-900">{a.statement}</p>
-                        <p className="text-gray-500 mt-1 capitalize">{a.type} • Evidence: {a.evidenceScore}/5</p>
-                      </div>
-                    ))}
-                    {assumptions.length === 0 && <p className="text-xs text-gray-500 italic">No assumptions logged.</p>}
-                  </div>
-                </div>
-                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                  <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center">
-                    <SignalIcon className="h-4 w-4 mr-2 text-indigo-500" /> Latest Signals
-                  </h4>
-                  <div className="space-y-2">
-                    {signals.slice(0, 3).map(s => (
-                      <div key={s.id} className="flex flex-col text-xs p-2 bg-gray-50 rounded border border-gray-100">
-                        <div className="flex justify-between items-center">
-                          <span className="font-medium text-gray-900">Waitlist</span>
-                          <span className="font-bold text-indigo-600">+{s.waitlistSignups || 0}</span>
+                  return (
+                    <button
+                      key={company.id}
+                      onClick={() => setSelectedCompanyId(company.id)}
+                      className={cn(
+                        'w-full rounded-3xl border px-4 py-4 text-left transition-colors',
+                        selectedCompanyId === company.id
+                          ? 'border-sky-200 bg-sky-50'
+                          : 'border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white'
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-slate-950">{company.name}</p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {companyProgress?.finalStage
+                              ? formatDirectionLabel(companyProgress.finalStage)
+                              : 'Needs phase review'}
+                          </p>
                         </div>
-                        {s.revenue ? (
-                          <div className="flex justify-between items-center mt-1">
-                            <span className="font-medium text-gray-900">Revenue</span>
-                            <span className="font-bold text-green-600">${s.revenue}</span>
-                          </div>
-                        ) : null}
+                        <span
+                          className={cn(
+                            'rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]',
+                            selectedCompanyId === company.id
+                              ? 'bg-white text-slate-700 ring-1 ring-slate-200'
+                              : 'bg-slate-200 text-slate-600'
+                          )}
+                        >
+                          {selectedCompanyId === company.id ? 'selected' : 'assignment active'}
+                        </span>
                       </div>
-                    ))}
-                    {signals.length === 0 && <p className="text-xs text-gray-500 italic">No signals logged.</p>}
+                      <p className="mt-3 text-sm leading-6 text-slate-600">{phaseLabel}</p>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+                  No assigned founders are attached to this mentor record yet. The OM starter seed does not fabricate mentor assignments.
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
+
+        <main className="space-y-6">
+          {selectedCompany && selectedInsight && selectedEvidenceContext ? (
+            <>
+              <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h2 className="text-2xl font-semibold text-slate-950">{selectedCompany.name}</h2>
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
+                        {selectedInsight.stageLabel}
+                      </span>
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600 ring-1 ring-slate-200">
+                        membership: {selectedCompany.membershipStatus || 'unknown'}
+                      </span>
+                    </div>
+                    <p className="max-w-3xl text-sm leading-6 text-slate-600">
+                      {phaseGuidanceByStage[selectedInsight.stage] || selectedInsight.nextMilestone}
+                    </p>
+                    {selectedAssignment?.goal ? (
+                      <p className="text-sm font-medium text-slate-700">Current assignment goal: {selectedAssignment.goal}</p>
+                    ) : (
+                      <p className="text-sm text-slate-500">No explicit mentor assignment goal is recorded yet.</p>
+                    )}
+                  </div>
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Mentor Guardrail</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-700">
+                      {selectedInsight.isValidationLevelOneReady
+                        ? 'Discovery proof is stronger, but readiness still depends on OM review and the next blocker.'
+                        : 'Keep advice discovery-scoped. Sparse evidence should not turn into product, traction, or readiness claims.'}
+                    </p>
                   </div>
                 </div>
-              </div>
+              </section>
 
-              {/* Feedback Form */}
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                <h3 className="text-lg font-semibold mb-4 flex items-center">
-                  <MessageSquare className="h-5 w-5 mr-2" /> Submit Meeting Notes
-                </h3>
-                <form onSubmit={handleSubmitFeedback} className="space-y-4">
-                  <textarea
-                    value={feedbackText}
-                    onChange={(e) => setFeedbackText(e.target.value)}
-                    placeholder="What did you discuss? What are the next steps?"
-                    className="w-full h-32 border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                    required
-                  />
-                  <button 
-                    type="submit"
-                    className="bg-indigo-600 text-white px-6 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 transition-colors"
-                  >
-                    Save Notes
-                  </button>
-                </form>
-              </div>
+              <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+                <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-950">Company Evidence Brief</h3>
+                      <p className="mt-1 text-sm text-slate-500">A fast evidence-context read before you widen mentor advice.</p>
+                    </div>
+                    <ShieldCheck className="h-5 w-5 text-slate-500" />
+                  </div>
 
-              {/* Feedback History */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900">Recent Notes</h3>
-                {companyFeedback
-                  .slice()
-                  .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
-                  .map((item) => (
-                  <div key={item.id} className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center text-xs text-gray-500">
-                        <Calendar className="h-3 w-3 mr-1" />
-                        {format(new Date(item.submittedAt), 'MMM d, yyyy h:mm a')}
+                  <p className="mt-5 text-sm leading-7 text-slate-700">{selectedEvidenceNarrative}</p>
+
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    {(['verified', 'reported', 'inference', 'missing'] as const).map((truthClass) => (
+                      <span key={truthClass} className={confidenceBadgeClass(truthClass)}>
+                        {truthClass}: {evidenceConfidenceCounts[truthClass]}
+                      </span>
+                    ))}
+                    <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600 ring-1 ring-slate-200">
+                      coverage gaps: {missingCoverageCount}
+                    </span>
+                  </div>
+
+                  <div className="mt-5 grid gap-4 md:grid-cols-2">
+                    <div className="rounded-3xl bg-slate-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Strongest Verified Evidence</p>
+                      <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
+                        {selectedEvidenceContext.customerDiscovery.strongestEvidence.length > 0 ? (
+                          selectedEvidenceContext.customerDiscovery.strongestEvidence.slice(0, 3).map((item) => (
+                            <li key={item}>{item}</li>
+                          ))
+                        ) : (
+                          <li>No verified discovery evidence is summarized yet.</li>
+                        )}
+                      </ul>
+                    </div>
+
+                    <div className="rounded-3xl bg-slate-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Quality Flags</p>
+                      <div className="mt-3 space-y-3">
+                        {evidenceFlags.length > 0 ? (
+                          evidenceFlags.slice(0, 3).map((flag) => (
+                            <div key={flag.key} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm leading-6 text-slate-700">{flag.message}</p>
+                                <span className={qualityFlagClass(flag.severity)}>{flag.severity}</span>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-sm text-slate-500">
+                            No active quality flags are surfacing from the current source lanes.
+                          </p>
+                        )}
                       </div>
                     </div>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.internalNotes}</p>
                   </div>
-                ))}
-                {companyFeedback.length === 0 && (
-                  <p className="text-sm text-gray-500 text-center py-8">No notes logged for this startup yet.</p>
-                )}
-              </div>
+                </div>
+
+                <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <Target className="h-5 w-5 text-sky-500" />
+                    <h3 className="text-lg font-semibold text-slate-950">Mentor Focus Now</h3>
+                  </div>
+                  <div className="mt-5 space-y-4">
+                    <div className="rounded-3xl bg-sky-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-800">Current recommendation</p>
+                      <p className="mt-3 text-sm leading-6 text-slate-700">{selectedInsight.recommendedSupportAction}</p>
+                    </div>
+                    <div className="rounded-3xl bg-slate-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Latest readiness signal</p>
+                      <p className="mt-3 text-sm font-semibold text-slate-900">
+                        {mentorReadyReview
+                          ? `${formatDirectionLabel(mentorReadyReview.status)} on ${format(new Date(mentorReadyReview.reviewedAt), 'MMM d, yyyy')}`
+                          : 'No mentor-ready review is recorded yet.'}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        {mentorReadyReview?.reasons?.[0] ||
+                          'Use this workspace to sharpen the next blocker, not to infer a staff readiness decision.'}
+                      </p>
+                    </div>
+                    <div className="rounded-3xl bg-slate-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Next blocker to help close</p>
+                      <p className="mt-3 text-sm leading-6 text-slate-700">
+                        {majorUnknowns[0] || selectedInsight.proofGaps[0] || 'Discovery is still early. Help the founder gather sharper evidence first.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="grid gap-6 xl:grid-cols-2">
+                <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <Lightbulb className="h-5 w-5 text-amber-500" />
+                    <h3 className="text-lg font-semibold text-slate-950">Strongest Patterns</h3>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-500">Repeated pains and current alternatives that matter now.</p>
+
+                  <div className="mt-5 space-y-4">
+                    {strongestPatterns.length > 0 ? (
+                      strongestPatterns.map((pattern) => (
+                        <div key={pattern.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-semibold text-slate-950">{pattern.problemTheme}</p>
+                            <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600 ring-1 ring-slate-200">
+                              {pattern.numberOfMentions} mentions
+                            </span>
+                            <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600 ring-1 ring-slate-200">
+                              {pattern.unpromptedMentions} spontaneous
+                            </span>
+                            <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600 ring-1 ring-slate-200">
+                              {formatDirectionLabel(pattern.status)}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-sm leading-6 text-slate-700">
+                            {pattern.representativeQuote || 'No representative quote is attached yet.'}
+                          </p>
+                          <p className="mt-3 text-sm text-slate-600">
+                            Current alternative showing up most: {getTopCurrentAlternative(pattern, interviews) || 'not clear yet'}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+                        No repeated patterns are recorded yet. Stay in discovery mode until the evidence actually repeats.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-rose-500" />
+                    <h3 className="text-lg font-semibold text-slate-950">Major Unknowns</h3>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-500">What the current record still cannot answer cleanly.</p>
+
+                  <div className="mt-5 space-y-3">
+                    {majorUnknowns.length > 0 ? (
+                      majorUnknowns.map((item) => (
+                        <div key={item} className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-700">
+                          {item}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+                        No major unknowns are summarized yet. That usually means the evidence base is still thin, not that the company is clear.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+                <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5 text-slate-500" />
+                    <h3 className="text-lg font-semibold text-slate-950">Meeting Context</h3>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-500">Recent requests and meeting history already attached to this company.</p>
+
+                  <div className="mt-5 space-y-4">
+                    {recentMeetingRequests.length > 0 ? (
+                      recentMeetingRequests.map((request) => (
+                        <div key={request.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={meetingStatusClass(request.status)}>{request.status}</span>
+                            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                              {request.meetingDate ? format(new Date(request.meetingDate), 'MMM d, yyyy h:mm a') : 'Date not recorded'}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-sm leading-6 text-slate-700">{request.reason || 'No meeting reason recorded yet.'}</p>
+                          <p className="mt-2 text-sm text-slate-500">
+                            {request.programContext || 'Program context not recorded.'}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+                        No mentor meeting request is recorded for this company yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <ClipboardCheck className="h-5 w-5 text-sky-500" />
+                    <h3 className="text-lg font-semibold text-slate-950">Scoped Notes</h3>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-500">Capture internal mentor notes without turning them into readiness or traction claims.</p>
+
+                  <form onSubmit={handleSubmitFeedback} className="mt-5 space-y-4">
+                    <textarea
+                      value={feedbackText}
+                      onChange={(event) => setFeedbackText(event.target.value)}
+                      placeholder="What did you hear? What still needs proof? What should the founder do next?"
+                      className="h-32 w-full rounded-3xl border border-slate-300 px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-slate-400 focus:outline-none"
+                      required
+                    />
+                    <button
+                      type="submit"
+                      className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      Save note
+                    </button>
+                  </form>
+
+                  <div className="mt-6 space-y-3">
+                    {recentNotes.length > 0 ? (
+                      recentNotes.map((note) => (
+                        <div key={note.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            {format(new Date(note.submittedAt), 'MMM d, yyyy h:mm a')}
+                          </p>
+                          <p className="mt-3 text-sm leading-6 text-slate-700">{note.internalNotes || 'No note text recorded.'}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+                        No mentor-scoped notes are recorded for this company yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
             </>
           ) : (
-            <div className="bg-white h-64 flex items-center justify-center rounded-lg border border-dashed border-gray-300">
-              <div className="text-center">
-                <ExternalLink className="h-8 w-8 text-gray-300 mx-auto mb-2" />
-                <p className="text-gray-500">Select a startup to view details and log feedback.</p>
-              </div>
+            <div className="rounded-[32px] border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm">
+              <ExternalLink className="mx-auto h-10 w-10 text-slate-300" />
+              <h2 className="mt-4 text-xl font-semibold text-slate-950">Select an assigned company</h2>
+              <p className="mt-2 text-sm text-slate-500">
+                This workspace only becomes useful when a mentor has an active assignment and a real company record to review.
+              </p>
             </div>
           )}
-        </div>
+        </main>
       </div>
     </div>
   );
