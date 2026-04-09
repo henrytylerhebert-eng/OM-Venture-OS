@@ -24,15 +24,18 @@ import {
   getSignals,
 } from '../services/evidenceService';
 import { createReadinessReview, getReadinessReviews } from '../services/progressService';
+import { getActiveCompanyResourceAccess, grantCompanyResourceAccess } from '../services/unlockService';
 import {
   buildCompanyEvidenceContextFromCurrentData,
   buildCompanyEvidenceNarrativeBrief,
   buildCompanyEvidenceQualityFlags,
 } from '../services/companyEvidenceContextService';
 import { buildCompanyOperatingInsight } from '../lib/companyInsights';
+import { buildCompanyResourceView } from '../lib/unlocks';
 import { cn } from '../lib/utils';
 import {
   Assumption,
+  CompanyResourceAccess,
   Company,
   CompanyEvidenceContext,
   CompanyEvidenceReviewGoal,
@@ -111,6 +114,8 @@ const ReadinessQueue: React.FC = () => {
   const [reviewType, setReviewType] = useState<ReadinessType>(ReadinessType.BUILDER_COMPLETION);
   const [reviewStatus, setReviewStatus] = useState<ReadinessStatus>(ReadinessStatus.NEEDS_REVIEW);
   const [reviewReasons, setReviewReasons] = useState('');
+  const [companyResourceAccess, setCompanyResourceAccess] = useState<CompanyResourceAccess[]>([]);
+  const [grantingResourceKey, setGrantingResourceKey] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubCompanies = getCompanies((allCompanies) => {
@@ -152,6 +157,15 @@ const ReadinessQueue: React.FC = () => {
     };
   }, [companies]);
 
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      setCompanyResourceAccess([]);
+      return undefined;
+    }
+
+    return getActiveCompanyResourceAccess(setCompanyResourceAccess, selectedCompanyId);
+  }, [selectedCompanyId]);
+
   const companyRows = useMemo(
     () =>
       companies
@@ -183,7 +197,9 @@ const ReadinessQueue: React.FC = () => {
   );
 
   const decisionRows = filteredRows.filter(({ insight }) => insight.needsReviewNow);
-  const unlockCandidates = filteredRows.filter(({ insight }) => insight.availableResources.length > 0).slice(0, 6);
+  const unlockCandidates = filteredRows
+    .filter(({ insight }) => insight.availableResources.some((resource) => resource.founderVisible))
+    .slice(0, 6);
   const mentorEscalations = filteredRows
     .filter(({ insight }) => insight.needsMentor || insight.staffAttentionLevel === 'high')
     .slice(0, 6);
@@ -222,6 +238,29 @@ const ReadinessQueue: React.FC = () => {
     () => (selectedEvidenceContext ? buildCompanyEvidenceQualityFlags(selectedEvidenceContext.evidenceQuality) : []),
     [selectedEvidenceContext]
   );
+  const selectedResourceView = useMemo(
+    () =>
+      selectedRow
+        ? buildCompanyResourceView({
+            accessRecords: companyResourceAccess,
+            availableResourceKeys: selectedRow.insight.availableResources.map((resource) => resource.key),
+            lockedResources: selectedRow.insight.lockedResources.map((resource) => ({
+              key: resource.key,
+              missingProof: resource.missingProof,
+            })),
+          }).filter((resource) => resource.founderVisible)
+        : [],
+    [companyResourceAccess, selectedRow]
+  );
+  const selectedUnlockedResources = selectedResourceView.filter(
+    (resource) => resource.accessState === 'unlocked'
+  );
+  const selectedEligibleResources = selectedResourceView.filter(
+    (resource) => resource.accessState === 'eligible'
+  );
+  const selectedLockedResources = selectedResourceView.filter(
+    (resource) => resource.accessState === 'locked'
+  );
 
   useEffect(() => {
     if (!selectedRow) {
@@ -230,7 +269,7 @@ const ReadinessQueue: React.FC = () => {
 
     setReviewType(selectedRow.insight.recommendedDecisionType);
     setReviewStatus(
-      selectedRow.insight.availableResources.length > 0
+      selectedEligibleResources.length > 0
         ? ReadinessStatus.READY
         : selectedRow.latestReview?.status === ReadinessStatus.NOT_READY ||
             selectedRow.latestReview?.status === ReadinessStatus.NEEDS_WORK
@@ -238,7 +277,46 @@ const ReadinessQueue: React.FC = () => {
           : ReadinessStatus.NEEDS_REVIEW
     );
     setReviewReasons('');
-  }, [selectedRow]);
+  }, [selectedEligibleResources.length, selectedRow]);
+
+  const handleGrantAccess = async (resourceKey: string) => {
+    if (!profile?.personId || !selectedRow) {
+      return;
+    }
+
+    const resource = selectedEligibleResources.find((item) => item.key === resourceKey);
+    if (!resource) {
+      return;
+    }
+
+    setGrantingResourceKey(resourceKey);
+
+    try {
+      await grantCompanyResourceAccess({
+        companyId: selectedRow.company.id,
+        resourceKey: resource.key,
+        resourceNameSnapshot: resource.name,
+        unlockRuleId: resource.unlockRuleId,
+        grantedByPersonId: profile.personId,
+        grantedReason:
+          reviewReasons
+            .split('\n')
+            .map((reason) => reason.trim())
+            .find(Boolean) ||
+          `${resource.name} activated from the OM staff decision board using the current Builder evidence snapshot.`,
+        evidenceSnapshot: {
+          countedInterviews: selectedRow.insight.countedInterviews,
+          highPainInterviewCount: selectedRow.insight.highPainInterviewCount,
+          strongPatternCount: selectedRow.insight.strongPatternCount,
+          assumptionCount: selectedRow.insight.assumptionCount,
+          experimentCount: selectedRow.insight.experimentCount,
+          tractionSignalCount: selectedRow.insight.tractionSignalCount,
+        },
+      });
+    } finally {
+      setGrantingResourceKey(null);
+    }
+  };
 
   const handleCreateReview = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -302,7 +380,7 @@ const ReadinessQueue: React.FC = () => {
         <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Unlock Candidates</p>
           <p className="mt-3 text-3xl font-semibold text-emerald-950">{unlockCandidates.length}</p>
-          <p className="mt-2 text-sm text-emerald-800/80">Companies that have already earned the next support layer.</p>
+          <p className="mt-2 text-sm text-emerald-800/80">Companies whose current record appears to justify the next support layer. Sparse lanes still need human review.</p>
         </div>
         <div className="rounded-3xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">Mentor / Escalation</p>
@@ -376,7 +454,7 @@ const ReadinessQueue: React.FC = () => {
                           {insight.proofGaps.length > 0 ? (
                             insight.proofGaps.slice(0, 3).map((gap) => <li key={gap}>{gap}</li>)
                           ) : (
-                            <li>No immediate proof gaps are blocking the next support decision.</li>
+                            <li>No blocking proof gap is surfaced in the current record. Confirm source coverage before treating this as cleared.</li>
                           )}
                         </ul>
                       </div>
@@ -392,15 +470,18 @@ const ReadinessQueue: React.FC = () => {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-                      {insight.availableResources.length > 0 ? (
-                        insight.availableResources.slice(0, 4).map((resource) => (
+                      {insight.availableResources.some((resource) => resource.founderVisible) ? (
+                        insight.availableResources
+                          .filter((resource) => resource.founderVisible)
+                          .slice(0, 4)
+                          .map((resource) => (
                           <span
                             key={resource.key}
                             className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700"
                           >
                             {resource.name}
                           </span>
-                        ))
+                          ))
                       ) : (
                         <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
                           No support unlocks yet
@@ -422,7 +503,7 @@ const ReadinessQueue: React.FC = () => {
 
             {decisionRows.length === 0 && (
               <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
-                No companies currently surface as needing immediate staff judgment.
+                No companies currently surface as needing immediate staff judgment from the current record set. Sparse evidence can still mean more discovery is needed.
               </div>
             )}
           </div>
@@ -453,21 +534,24 @@ const ReadinessQueue: React.FC = () => {
                     <ArrowRight className="mt-1 h-4 w-4 text-slate-400" />
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {insight.availableResources.slice(0, 3).map((resource) => (
+                    {insight.availableResources
+                      .filter((resource) => resource.founderVisible)
+                      .slice(0, 3)
+                      .map((resource) => (
                       <span
                         key={resource.key}
                         className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700"
                       >
                         {resource.name}
                       </span>
-                    ))}
+                      ))}
                   </div>
                 </button>
               ))}
 
               {unlockCandidates.length === 0 && (
                 <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-                  No founders have crossed a support threshold that needs staff activation right now.
+                  No founders currently show enough recorded proof to activate the next support threshold.
                 </p>
               )}
             </div>
@@ -496,7 +580,7 @@ const ReadinessQueue: React.FC = () => {
 
               {mentorEscalations.length === 0 && (
                 <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-                  No mentor activation or escalation gaps are surfacing right now.
+                  No mentor activation or escalation gap is surfacing right now. Sparse evidence may still leave mentor needs unformed.
                 </p>
               )}
             </div>
@@ -531,7 +615,7 @@ const ReadinessQueue: React.FC = () => {
 
               {recentDecisions.length === 0 && (
                 <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-                  No formal readiness decisions have been recorded yet.
+                  No formal readiness decisions have been recorded yet. That means no formal OM call has been captured yet.
                 </p>
               )}
             </div>
@@ -673,7 +757,7 @@ const ReadinessQueue: React.FC = () => {
                             ))
                           ) : (
                             <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">
-                              No evidence timeline events are available yet.
+                              No evidence timeline events are available yet. Missing timeline coverage is a gap, not a positive signal.
                             </p>
                           )}
                         </div>
@@ -709,7 +793,7 @@ const ReadinessQueue: React.FC = () => {
                             ))
                           ) : (
                             <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">
-                              No active quality flags are surfacing from the current source lanes.
+                              No active quality flags are surfacing from the current source lanes. Missing lanes can still leave blind spots.
                             </p>
                           )}
                         </div>
@@ -771,7 +855,7 @@ const ReadinessQueue: React.FC = () => {
                       {selectedRow.insight.proofGaps.length > 0 ? (
                         selectedRow.insight.proofGaps.map((gap) => <li key={gap}>{gap}</li>)
                       ) : (
-                        <li>No immediate proof gap is blocking the next OM decision.</li>
+                        <li>No blocking proof gap is surfaced in the current record. Confirm source coverage before treating this as cleared.</li>
                       )}
                     </ul>
                   </div>
@@ -786,28 +870,86 @@ const ReadinessQueue: React.FC = () => {
                   </div>
 
                   <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Support That Could Unlock Next</h3>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {selectedRow.insight.availableResources.length > 0 ? (
-                        selectedRow.insight.availableResources.map((resource) => (
-                          <span
-                            key={resource.key}
-                            className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700"
-                          >
-                            {resource.name}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
-                          Still locked
-                        </span>
-                      )}
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Persistent Support Access</h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      Eligibility is not the same as access. Staff can activate support here once the Builder record justifies it.
+                    </p>
+
+                    <div className="mt-5 space-y-4">
+                      <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Ready To Activate</p>
+                        <div className="mt-3 space-y-3">
+                          {selectedEligibleResources.length > 0 ? (
+                            selectedEligibleResources.map((resource) => (
+                              <div
+                                key={resource.key}
+                                className="flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3"
+                              >
+                                <div>
+                                  <p className="text-sm font-semibold text-emerald-950">{resource.name}</p>
+                                  <p className="mt-1 text-sm text-emerald-900/80">{resource.description}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleGrantAccess(resource.key)}
+                                  disabled={grantingResourceKey === resource.key}
+                                  className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                >
+                                  {grantingResourceKey === resource.key ? 'Activating...' : 'Grant access'}
+                                </button>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-sm text-slate-500">
+                              No founder-visible support is ready to activate yet from the current record.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Already Unlocked</p>
+                        <div className="mt-3 space-y-3">
+                          {selectedUnlockedResources.length > 0 ? (
+                            selectedUnlockedResources.map((resource) => (
+                              <div key={resource.key} className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+                                <p className="text-sm font-semibold text-sky-950">{resource.name}</p>
+                                <p className="mt-1 text-sm text-sky-900/80">
+                                  {resource.grantedReason || 'Unlocked through staff review.'}
+                                </p>
+                                {resource.grantedAt ? (
+                                  <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
+                                    Activated {format(new Date(resource.grantedAt), 'MMM d, yyyy')}
+                                  </p>
+                                ) : null}
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-sm text-slate-500">No active support access records are attached yet.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Still Locked</p>
+                        <div className="mt-3 space-y-3">
+                          {selectedLockedResources.length > 0 ? (
+                            selectedLockedResources.slice(0, 3).map((resource) => (
+                              <div key={resource.key} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                <p className="text-sm font-semibold text-slate-900">{resource.name}</p>
+                                <p className="mt-1 text-sm text-slate-600">
+                                  {resource.missingProof[0] || 'More Builder proof is still needed before access can open.'}
+                                </p>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-sm text-slate-500">
+                              No additional founder-visible support pathways are configured as locked right now.
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    {selectedRow.insight.lockedResources.length > 0 ? (
-                      <p className="mt-4 text-sm leading-6 text-slate-600">
-                        Locked support is waiting on: {selectedRow.insight.lockedResources[0].missingProof[0]}
-                      </p>
-                    ) : null}
                   </div>
                 </div>
               </section>

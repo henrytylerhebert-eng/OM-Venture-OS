@@ -10,22 +10,21 @@ import {
   ReadinessReview,
   ReadinessStatus,
   ReadinessType,
+  ResourceCatalogItem,
   Signal,
   StartupStage,
+  UnlockRuleId,
 } from '../types';
 import { formatStageLabel } from './roleRouting';
+import { buildProofGapsFromRule, DEFAULT_RESOURCE_CATALOG, getDefaultUnlockRule } from './unlocks';
 
 export type SupportResourceStatus = 'available' | 'locked';
 
-export interface SupportResourceDefinition {
-  key: string;
-  name: string;
-  category: 'program' | 'mentor' | 'pitch' | 'build' | 'capital';
-  gate: 'validation_level_1' | 'validation_level_2';
-  description: string;
-}
-
-export interface SupportResourceState extends SupportResourceDefinition {
+export interface SupportResourceState
+  extends Pick<
+    ResourceCatalogItem,
+    'key' | 'name' | 'category' | 'description' | 'unlockRuleId' | 'founderVisible'
+  > {
   status: SupportResourceStatus;
   missingProof: string[];
 }
@@ -64,93 +63,6 @@ export interface CompanyOperatingInsight {
   staffAttentionLevel: 'high' | 'medium' | 'low';
   staffAttentionReason: string;
 }
-
-const SUPPORT_RESOURCES: SupportResourceDefinition[] = [
-  {
-    key: 'testing_track',
-    name: 'Testing Track',
-    category: 'program',
-    gate: 'validation_level_1',
-    description: 'Structured support once customer discovery proof is strong enough to move into testing.',
-  },
-  {
-    key: 'monthly_reporting',
-    name: 'Monthly Reporting',
-    category: 'program',
-    gate: 'validation_level_1',
-    description: 'Recurring founder accountability once Builder proof is active and reviewable.',
-  },
-  {
-    key: 'startup_circle',
-    name: 'Startup Circle',
-    category: 'program',
-    gate: 'validation_level_1',
-    description: 'Peer support after appropriate customer discovery is in place.',
-  },
-  {
-    key: 'mentor_programs',
-    name: 'Mentor Programs',
-    category: 'mentor',
-    gate: 'validation_level_1',
-    description: 'Mentor access once discovery proof is mature enough to support sharper guidance.',
-  },
-  {
-    key: 'pitch_opportunities',
-    name: 'Pitch Opportunities',
-    category: 'pitch',
-    gate: 'validation_level_1',
-    description: 'Pitch practice after core customer truth is established.',
-  },
-  {
-    key: 'mix_and_jingle',
-    name: 'Mix & Jingle',
-    category: 'pitch',
-    gate: 'validation_level_1',
-    description: 'Elevator-pitch support tied to validation level 1.',
-  },
-  {
-    key: 'tech_tank',
-    name: 'Tech Tank',
-    category: 'build',
-    gate: 'validation_level_2',
-    description: 'Build-adjacent support once evidence moves beyond interviews into testing.',
-  },
-  {
-    key: 'product_requirements_doc',
-    name: 'Product Requirements Doc',
-    category: 'build',
-    gate: 'validation_level_2',
-    description: 'PRD help after validation extends past discovery and into live tests.',
-  },
-  {
-    key: 'tech_intern_support',
-    name: 'Tech Intern Support',
-    category: 'build',
-    gate: 'validation_level_2',
-    description: 'Intern support after the business model has been validated beyond interviews alone.',
-  },
-  {
-    key: 'funding_support',
-    name: 'Funding Support',
-    category: 'capital',
-    gate: 'validation_level_2',
-    description: 'Funding preparation once testing and signals support the story.',
-  },
-  {
-    key: 'sbir_sttr',
-    name: 'SBIR / STTR',
-    category: 'capital',
-    gate: 'validation_level_2',
-    description: 'Non-dilutive support once the venture has test-backed evidence.',
-  },
-  {
-    key: 'angel_venture',
-    name: 'Angel / Venture',
-    category: 'capital',
-    gate: 'validation_level_2',
-    description: 'Investor pathway visibility only after stronger validation and traction signals exist.',
-  },
-];
 
 const countTractionSignals = (signals: Signal[]) =>
   signals.filter((signal) =>
@@ -280,53 +192,60 @@ export const buildCompanyOperatingInsight = ({
   const activeMentorAssignments = mentorAssignments.filter(
     (assignment) => assignment.status === AssignmentStatus.ACTIVE
   ).length;
+  const unlockMetrics = {
+    countedInterviews,
+    highPainInterviewCount,
+    strongPatternCount,
+    assumptionCount: assumptions.length,
+    experimentCount: experiments.length,
+    tractionSignalCount,
+  };
+  const validationLevelOneRule = getDefaultUnlockRule(UnlockRuleId.VALIDATION_LEVEL_1);
+  const validationLevelTwoRule = getDefaultUnlockRule(UnlockRuleId.VALIDATION_LEVEL_2);
 
-  const levelOneProofGaps: string[] = [];
-  if (countedInterviews < 15) {
-    levelOneProofGaps.push(`Log ${15 - countedInterviews} more interviews that count toward the Builder minimum of 15.`);
-  }
-  if (highPainInterviewCount < 5) {
-    levelOneProofGaps.push(
-      `Capture ${5 - highPainInterviewCount} more strong customer pain signals with pain intensity 4 or 5.`
-    );
-  }
-  if (strongPatternCount < 2) {
-    levelOneProofGaps.push(`Synthesize at least ${2 - strongPatternCount} more repeated problem patterns.`);
-  }
-  if (assumptions.length < 3) {
-    levelOneProofGaps.push(`Map ${3 - assumptions.length} more risky assumptions that still need proof.`);
-  }
+  const levelOneProofGaps = validationLevelOneRule
+    ? buildProofGapsFromRule(validationLevelOneRule, unlockMetrics)
+    : [];
 
   const isValidationLevelOneReady = levelOneProofGaps.length === 0;
 
-  const levelTwoProofGaps: string[] = [];
+  const levelTwoProofGaps = validationLevelTwoRule
+    ? buildProofGapsFromRule(validationLevelTwoRule, unlockMetrics)
+    : [];
   if (!isValidationLevelOneReady) {
-    levelTwoProofGaps.push('Complete validation level 1 before moving into build and funding pathways.');
-  }
-  if (experiments.length < 1) {
-    levelTwoProofGaps.push('Run at least one validation test beyond interviews.');
-  }
-  if (tractionSignalCount < 1) {
-    levelTwoProofGaps.push('Log at least one measurable traction signal from live testing.');
+    levelTwoProofGaps.unshift('Complete validation level 1 before moving into build and funding pathways.');
   }
 
   const isValidationLevelTwoReady = levelTwoProofGaps.length === 0;
   const stage = inferStage(progress, countedInterviews, activeExperimentCount, tractionSignalCount);
 
-  const availableResources = SUPPORT_RESOURCES.filter((resource) =>
-    resource.gate === 'validation_level_1' ? isValidationLevelOneReady : isValidationLevelTwoReady
+  const activeResources = DEFAULT_RESOURCE_CATALOG.filter((resource) => resource.active);
+
+  const availableResources = activeResources.filter((resource) =>
+    resource.unlockRuleId === UnlockRuleId.VALIDATION_LEVEL_1 ? isValidationLevelOneReady : isValidationLevelTwoReady
   ).map((resource) => ({
-    ...resource,
+    key: resource.key,
+    name: resource.name,
+    category: resource.category,
+    unlockRuleId: resource.unlockRuleId,
+    description: resource.description,
+    founderVisible: resource.founderVisible,
     status: 'available' as const,
     missingProof: [],
   }));
 
-  const lockedResources = SUPPORT_RESOURCES.filter((resource) =>
-    resource.gate === 'validation_level_1' ? !isValidationLevelOneReady : !isValidationLevelTwoReady
+  const lockedResources = activeResources.filter((resource) =>
+    resource.unlockRuleId === UnlockRuleId.VALIDATION_LEVEL_1 ? !isValidationLevelOneReady : !isValidationLevelTwoReady
   ).map((resource) => ({
-    ...resource,
+    key: resource.key,
+    name: resource.name,
+    category: resource.category,
+    unlockRuleId: resource.unlockRuleId,
+    description: resource.description,
+    founderVisible: resource.founderVisible,
     status: 'locked' as const,
-    missingProof: resource.gate === 'validation_level_1' ? levelOneProofGaps : levelTwoProofGaps,
+    missingProof:
+      resource.unlockRuleId === UnlockRuleId.VALIDATION_LEVEL_1 ? levelOneProofGaps : levelTwoProofGaps,
   }));
 
   const proofGaps = isValidationLevelOneReady ? levelTwoProofGaps : levelOneProofGaps;

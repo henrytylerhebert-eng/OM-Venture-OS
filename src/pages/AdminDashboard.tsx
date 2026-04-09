@@ -131,8 +131,12 @@ const AdminDashboard: React.FC = () => {
     .sort((a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
   const interventionNow = companyRows.filter(({ insight }) => insight.staffAttentionLevel !== 'low').slice(0, 6);
   const unlockCandidates = companyRows
-    .filter(({ insight }) => insight.availableResources.length > 0)
-    .sort((a, b) => b.insight.availableResources.length - a.insight.availableResources.length)
+    .filter(({ insight }) => insight.availableResources.some((resource) => resource.founderVisible))
+    .sort(
+      (a, b) =>
+        b.insight.availableResources.filter((resource) => resource.founderVisible).length -
+        a.insight.availableResources.filter((resource) => resource.founderVisible).length
+    )
     .slice(0, 6);
   const mentorQueue = companyRows.filter(({ insight }) => insight.needsMentor).slice(0, 5);
   const levelOneReadyCount = companyRows.filter(({ insight }) => insight.isValidationLevelOneReady).length;
@@ -204,7 +208,7 @@ const AdminDashboard: React.FC = () => {
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Member Companies In Motion</p>
           <p className="mt-3 text-3xl font-semibold text-slate-950">{activeCompanies}</p>
-          <p className="mt-2 text-sm text-slate-500">Active founder companies currently visible in the operating system.</p>
+          <p className="mt-2 text-sm text-slate-500">Active founder companies visible in the operating system. This is portfolio visibility, not proof.</p>
         </div>
         <div className="rounded-3xl border border-rose-200 bg-rose-50 p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-rose-700">Needs OM Intervention</p>
@@ -214,12 +218,12 @@ const AdminDashboard: React.FC = () => {
         <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Validation Level 1 Ready</p>
           <p className="mt-3 text-3xl font-semibold text-emerald-950">{levelOneReadyCount}</p>
-          <p className="mt-2 text-sm text-emerald-800/80">Eligible now for mentors, startup circle, and pitch pathways.</p>
+          <p className="mt-2 text-sm text-emerald-800/80">Current records suggest mentor, startup circle, or pitch review may be warranted. Zero can simply mean discovery is still sparse.</p>
         </div>
         <div className="rounded-3xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Validation Level 2 Ready</p>
           <p className="mt-3 text-3xl font-semibold text-sky-950">{levelTwoReadyCount}</p>
-          <p className="mt-2 text-sm text-sky-800/80">Founders who have moved beyond interviews into testing and traction signals.</p>
+          <p className="mt-2 text-sm text-sky-800/80">Current records suggest build or capital review may be warranted. Zero can mean tests or signals are not recorded yet.</p>
         </div>
       </section>
 
@@ -289,7 +293,7 @@ const AdminDashboard: React.FC = () => {
 
             {interventionNow.length === 0 && (
               <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
-                No urgent interventions are surfacing right now.
+                No urgent intervention is surfacing from the current record set. Sparse evidence can still mean a founder needs more discovery.
               </div>
             )}
           </div>
@@ -352,7 +356,7 @@ const AdminDashboard: React.FC = () => {
 
               {recentReadinessDecisions.length === 0 && (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-                  No readiness decisions have been recorded yet.
+                  No readiness decisions have been recorded yet. That means undecided, not ready.
                 </div>
               )}
             </div>
@@ -392,7 +396,7 @@ const AdminDashboard: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-950">Unlock Candidates</h2>
-              <p className="mt-1 text-sm text-slate-500">Founders who have earned the next support layer from evidence already in the system.</p>
+              <p className="mt-1 text-sm text-slate-500">Current records that appear to qualify for the next support layer. Staff still needs to confirm sparse or missing lanes before opening support.</p>
             </div>
             <ShieldCheck className="h-5 w-5 text-sky-500" />
           </div>
@@ -407,14 +411,17 @@ const AdminDashboard: React.FC = () => {
                       <p className="mt-1 text-sm text-slate-500">{insight.nextMilestone}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {insight.availableResources.slice(0, 4).map((resource) => (
+                      {insight.availableResources
+                        .filter((resource) => resource.founderVisible)
+                        .slice(0, 4)
+                        .map((resource) => (
                         <span
                           key={resource.key}
                           className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700"
                         >
                           {resource.name}
                         </span>
-                      ))}
+                        ))}
                     </div>
                   </div>
                   <Link
@@ -430,7 +437,7 @@ const AdminDashboard: React.FC = () => {
 
             {unlockCandidates.length === 0 && (
               <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
-                No founders have crossed a support unlock threshold yet.
+                No founders currently show enough recorded proof to activate the next support layer.
               </div>
             )}
           </div>
@@ -466,7 +473,7 @@ const AdminDashboard: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-950">Mentor Matching Queue</h2>
-              <p className="mt-1 text-sm text-slate-500">Companies that have earned mentor support but still need activation.</p>
+              <p className="mt-1 text-sm text-slate-500">Companies whose current record appears mentor-ready but still needs activation.</p>
             </div>
             <UserCheck className="h-5 w-5 text-emerald-500" />
           </div>
@@ -493,7 +500,7 @@ const AdminDashboard: React.FC = () => {
             ))}
             {mentorQueue.length === 0 && (
               <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
-                No mentor-matching gaps are visible right now.
+                No mentor activation gap is surfacing from the current record set.
               </div>
             )}
           </div>

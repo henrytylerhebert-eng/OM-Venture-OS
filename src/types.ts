@@ -238,6 +238,19 @@ export enum AccessStatus {
   REVOKED = "revoked"
 }
 
+export enum ResourceCatalogCategory {
+  PROGRAM = "program",
+  MENTOR = "mentor",
+  PITCH = "pitch",
+  BUILD = "build",
+  CAPITAL = "capital"
+}
+
+export enum UnlockRuleId {
+  VALIDATION_LEVEL_1 = "validation_level_1",
+  VALIDATION_LEVEL_2 = "validation_level_2"
+}
+
 export enum IntroStatus {
   NOT_STARTED = "not_started",
   INTRO_REQUESTED = "intro_requested",
@@ -650,6 +663,60 @@ export interface InvestorReviewAccess {
   accessStatus: AccessStatus;
   reasonForAccess?: string;
   expirationDate?: string;
+}
+
+export interface ResourceCatalogItem {
+  id: string;
+  key: string;
+  name: string;
+  category: ResourceCatalogCategory;
+  unlockRuleId: UnlockRuleId;
+  description: string;
+  founderVisible: boolean;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UnlockRule {
+  id: string;
+  name: string;
+  unlockRuleId: UnlockRuleId;
+  minimumCountedInterviews?: number;
+  minimumHighPainInterviews?: number;
+  minimumStrongPatterns?: number;
+  minimumAssumptions?: number;
+  minimumExperiments?: number;
+  minimumTractionSignals?: number;
+  rationale: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompanyResourceAccessEvidenceSnapshot {
+  countedInterviews: number;
+  highPainInterviewCount: number;
+  strongPatternCount: number;
+  assumptionCount: number;
+  experimentCount: number;
+  tractionSignalCount: number;
+}
+
+export interface CompanyResourceAccess {
+  id: string;
+  companyId: string;
+  resourceKey: string;
+  resourceNameSnapshot: string;
+  unlockRuleId: UnlockRuleId;
+  accessStatus: AccessStatus;
+  grantedAt: string;
+  grantedByPersonId: string;
+  grantedReason: string;
+  evidenceSnapshot: CompanyResourceAccessEvidenceSnapshot;
+  updatedAt: string;
+  revokedAt?: string;
+  revokedReason?: string;
 }
 
 export interface InvestorPipeline {
