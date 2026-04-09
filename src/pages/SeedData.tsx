@@ -1,273 +1,262 @@
-import React, { useState } from 'react';
-import { createOrganization, createCompany } from '../services/companyService';
-import { createPerson, assignMentor } from '../services/mentorService';
-import { createUserProfile } from '../services/authService';
-import { submitApplication, approveCohortApplication } from '../services/cohortService';
-import { createReadinessReview } from '../services/progressService';
-import { 
-  Organization, 
-  Person, 
-  Company, 
-  Cohort, 
-  CohortApplication, 
-  Mentor, 
-  UserProfile,
-  OrganizationType,
-  RoleType,
-  MembershipStatus,
-  ProgramType,
-  CohortStatus,
-  AssignmentType,
-  AssignmentStatus,
-  DecisionStatus,
-  ReadinessType,
-  ReadinessStatus
-} from '../types';
-import { collection, addDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import React from 'react';
+import {
+  OM_STARTER_COMPANIES,
+  OM_STARTER_CONNECTIONS,
+  OM_STARTER_FEEDBACK,
+  OM_STARTER_MEETING_REQUESTS,
+  OM_STARTER_MENTORS,
+  OM_STARTER_PEOPLE,
+  OM_STARTER_SEED_GAPS,
+  REMOVED_FAKE_SEED_FIXTURES,
+} from '../lib/omStarterSeed';
 
 const SeedData: React.FC = () => {
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-
-  const handleSeed = async () => {
-    setLoading(true);
-    setMessage('Seeding data...');
-    try {
-      // 1. Create OM Organization
-      const omOrgId = await createOrganization({
-        name: 'Opportunity Machine',
-        type: OrganizationType.OM,
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      // 2. Create Startup Organizations
-      const startupOrg1Id = await createOrganization({
-        name: 'TechFlow Systems',
-        type: OrganizationType.STARTUP,
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      const startupOrg2Id = await createOrganization({
-        name: 'GreenGrid Energy',
-        type: OrganizationType.STARTUP,
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      // 3. Create People
-      const adminId = await createPerson({
-        firstName: 'OM',
-        lastName: 'Admin',
-        fullName: 'OM Admin',
-        primaryEmail: 'admin@opportunitymachine.org',
-        organizationId: omOrgId,
-        roleType: RoleType.OM_ADMIN,
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      const staffId = await createPerson({
-        firstName: 'OM',
-        lastName: 'Staff',
-        fullName: 'OM Staff',
-        primaryEmail: 'staff@opportunitymachine.org',
-        organizationId: omOrgId,
-        roleType: RoleType.OM_STAFF,
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      const founder1Id = await createPerson({
-        firstName: 'Alice',
-        lastName: 'Founder',
-        fullName: 'Alice Founder',
-        primaryEmail: 'alice@techflow.io',
-        organizationId: startupOrg1Id,
-        roleType: RoleType.FOUNDER,
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      const founder2Id = await createPerson({
-        firstName: 'Bob',
-        lastName: 'Founder',
-        fullName: 'Bob Founder',
-        primaryEmail: 'bob@greengrid.energy',
-        organizationId: startupOrg2Id,
-        roleType: RoleType.FOUNDER,
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      const mentor1Id = await createPerson({
-        firstName: 'Charlie',
-        lastName: 'Mentor',
-        fullName: 'Charlie Mentor',
-        primaryEmail: 'charlie@mentor.com',
-        organizationId: omOrgId,
-        roleType: RoleType.MENTOR,
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      const mentor2Id = await createPerson({
-        firstName: 'Dana',
-        lastName: 'Mentor',
-        fullName: 'Dana Mentor',
-        primaryEmail: 'dana@mentor.com',
-        organizationId: omOrgId,
-        roleType: RoleType.MENTOR,
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      // 4. Create Companies
-      const company1Id = await createCompany({
-        name: 'TechFlow Systems',
-        organizationId: startupOrg1Id,
-        founderLeadPersonId: founder1Id,
-        membershipStatus: MembershipStatus.ACTIVE,
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      const company2Id = await createCompany({
-        name: 'GreenGrid Energy',
-        organizationId: startupOrg2Id,
-        founderLeadPersonId: founder2Id,
-        membershipStatus: MembershipStatus.PENDING,
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      // 5. Create Cohorts
-      const cohort1Ref = await addDoc(collection(db, 'cohorts'), {
-        name: 'Builder 1.0 Spring 2026',
-        programType: ProgramType.BUILDER_1_0,
-        status: CohortStatus.ACTIVE,
-        startDate: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-      const cohort1Id = cohort1Ref.id;
-
-      const cohort2Ref = await addDoc(collection(db, 'cohorts'), {
-        name: 'Builder 2.0 Summer 2026',
-        programType: ProgramType.BUILDER_2_0,
-        status: CohortStatus.PLANNED,
-        startDate: new Date('2026-06-01').toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-      const cohort2Id = cohort2Ref.id;
-
-      // 6. Create Mentor Profiles
-      await addDoc(collection(db, 'mentors'), {
-        personId: mentor1Id,
-        organizationId: omOrgId,
-        expertiseAreas: ['SaaS', 'Sales'],
-        stageFit: ['idea_development', 'customer_discovery'],
-        shareEmail: true,
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      // 7. Create Mentor Assignment
-      await assignMentor({
-        companyId: company1Id,
-        mentorId: mentor1Id,
-        assignedByPersonId: staffId,
-        assignmentType: AssignmentType.STAFF_MATCHED,
-        status: AssignmentStatus.ACTIVE,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      // 8. Create Cohort Application (Pending)
-      await submitApplication({
-        companyId: company2Id,
-        founderPersonId: founder2Id,
-        requestedCohortId: cohort1Id,
-        decision: DecisionStatus.PENDING,
-        submittedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      // 9. Create Approved Cohort Participation
-      const appToApproveRef = await addDoc(collection(db, 'cohortApplications'), {
-        companyId: company1Id,
-        founderPersonId: founder1Id,
-        requestedCohortId: cohort1Id,
-        decision: DecisionStatus.PENDING,
-        submittedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-      
-      const appToApprove = {
-        id: appToApproveRef.id,
-        companyId: company1Id,
-        founderPersonId: founder1Id,
-        requestedCohortId: cohort1Id,
-        decision: DecisionStatus.PENDING,
-        submittedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      } as CohortApplication;
-
-      await approveCohortApplication(appToApprove, staffId);
-
-      // 10. Create Readiness Review
-      await createReadinessReview({
-        companyId: company1Id,
-        reviewType: ReadinessType.BUILDER_COMPLETION,
-        status: ReadinessStatus.READY,
-        reasons: ['Completed 20 interviews', 'Validated problem theme'],
-        reviewedByPersonId: staffId,
-        reviewedAt: new Date().toISOString()
-      });
-
-      setMessage('Seed data created successfully!');
-    } catch (error) {
-      console.error(error);
-      setMessage('Error seeding data: ' + (error instanceof Error ? error.message : String(error)));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <div className="p-8 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Seed Test Data</h1>
-      <p className="text-gray-600 mb-6">
-        This utility will seed the database with a full set of Phase 1 test data, 
-        including organizations, people, companies, cohorts, and assignments.
-      </p>
-      <button
-        onClick={handleSeed}
-        disabled={loading}
-        className="bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
-      >
-        {loading ? 'Seeding...' : 'Seed Database'}
-      </button>
-      {message && (
-        <div className={`mt-4 p-4 rounded-md ${message.includes('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-          {message}
+    <div className="mx-auto max-w-6xl space-y-8 p-8">
+      <header className="space-y-3">
+        <div className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-800">
+          OM Starter Seed
         </div>
-      )}
+        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
+          Fake browser seeding is retired. Only approved OM starter records belong here now.
+        </h1>
+        <p className="max-w-4xl text-sm leading-6 text-slate-600">
+          The old invented startup/demo pack has been removed. Use the deterministic admin seed script
+          to write the approved OM-shaped starter records, and use this page as the internal registry of
+          what is real, what is deferred, and what must stay empty until actual Builder evidence exists.
+        </p>
+      </header>
+
+      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-2">
+            <h2 className="text-lg font-semibold text-slate-950">Seed command</h2>
+            <p className="text-sm leading-6 text-slate-600">
+              Run the approved seed path from the repo root with Firebase admin credentials available in
+              your environment. This script writes deterministic IDs and leaves Builder evidence empty on
+              purpose.
+            </p>
+          </div>
+          <div className="space-y-2 text-right">
+            <code className="block rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">
+              npm run seed:om-starter
+            </code>
+            <code className="block rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
+              npm run cleanup:fake-seed
+            </code>
+          </div>
+        </div>
+        <p className="mt-4 text-sm leading-6 text-slate-600">
+          Removing the old fake browser seeder did not auto-delete any legacy demo docs already written to
+          Firestore. Use the cleanup script in dry-run mode first, then only use the execute mode if the
+          matched records are clearly the known fake fixtures.
+        </p>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Companies</p>
+          <p className="mt-3 text-3xl font-semibold text-slate-950">{OM_STARTER_COMPANIES.length}</p>
+          <p className="mt-2 text-sm text-slate-500">Approved real company records for the starter seed.</p>
+        </div>
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">People</p>
+          <p className="mt-3 text-3xl font-semibold text-slate-950">{OM_STARTER_PEOPLE.length}</p>
+          <p className="mt-2 text-sm text-slate-500">Founders, mentors, staff, and personnel tied to real source rows.</p>
+        </div>
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Mentors</p>
+          <p className="mt-3 text-3xl font-semibold text-slate-950">{OM_STARTER_MENTORS.length}</p>
+          <p className="mt-2 text-sm text-slate-500">Official mentor profiles plus lightweight request-history profiles.</p>
+        </div>
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Meeting Requests</p>
+          <p className="mt-3 text-3xl font-semibold text-slate-950">{OM_STARTER_MEETING_REQUESTS.length}</p>
+          <p className="mt-2 text-sm text-slate-500">Approved mentor request history ready for Firestore.</p>
+        </div>
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Registry-Only Rows</p>
+          <p className="mt-3 text-3xl font-semibold text-amber-950">
+            {OM_STARTER_FEEDBACK.length + OM_STARTER_CONNECTIONS.length}
+          </p>
+          <p className="mt-2 text-sm text-amber-800/80">Approved real rows that stay deferred until the schema can hold them cleanly.</p>
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-950">Seedable Now</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            These records map cleanly into the current repo-native collections without inventing Builder evidence.
+          </p>
+
+          <div className="mt-6 space-y-6">
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Companies</h3>
+              <div className="mt-3 space-y-3">
+                {OM_STARTER_COMPANIES.map((company) => (
+                  <div key={company.id} className="rounded-2xl border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-slate-950">{company.displayName}</p>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                        {company.programContext}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-600">Source: {company.sourceTable}</p>
+                    {company.founderLeadName ? (
+                      <p className="mt-1 text-sm text-slate-600">Founder lead from source: {company.founderLeadName}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Mentors</h3>
+              <div className="mt-3 space-y-3">
+                {OM_STARTER_MENTORS.map((mentor) => (
+                  <div key={mentor.id} className="rounded-2xl border border-slate-200 p-4">
+                    <p className="font-semibold text-slate-950">{mentor.name}</p>
+                    <p className="mt-1 text-sm text-slate-600">Source: {mentor.sourceTable}</p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Expertise: {mentor.expertiseAreas.length > 0 ? mentor.expertiseAreas.join(', ') : 'Held empty until approved expertise is available in-source.'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-950">Operational Records Preserved</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            These are the approved real workflow rows that shape the seed state without faking venture proof.
+          </p>
+
+          <div className="mt-6 space-y-6">
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Meeting Requests</h3>
+              <div className="mt-3 space-y-3">
+                {OM_STARTER_MEETING_REQUESTS.map((request) => (
+                  <div key={request.id} className="rounded-2xl border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-slate-950">{request.founderName}</p>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                        {request.status}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-600">{request.mentorName}</p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {request.sourceTable}
+                      {request.cohort ? ` · ${request.cohort}` : ''}
+                      {request.locationContext ? ` · ${request.locationContext}` : ''}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">People</h3>
+              <div className="mt-3 max-h-[22rem] space-y-3 overflow-auto pr-2">
+                {OM_STARTER_PEOPLE.map((person) => (
+                  <div key={person.id} className="rounded-2xl border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-slate-950">{person.fullName}</p>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
+                        {person.roleLabel.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-600">{person.sourceTable}</p>
+                    {person.companyName ? (
+                      <p className="mt-1 text-sm text-slate-600">Company context: {person.companyName}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-amber-950">Registry-Only For Now</h2>
+          <p className="mt-1 text-sm text-amber-800/80">
+            These rows are approved and preserved, but the current repo should not force them into Firestore yet.
+          </p>
+
+          <div className="mt-6 space-y-6">
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-amber-700">Feedback</h3>
+              <div className="mt-3 space-y-3">
+                {OM_STARTER_FEEDBACK.map((item) => (
+                  <div key={item.id} className="rounded-2xl border border-amber-200 bg-white/80 p-4">
+                    <p className="font-semibold text-slate-950">
+                      {item.founderName} · {item.mentorName}
+                    </p>
+                    {item.companyName ? (
+                      <p className="mt-1 text-sm text-slate-600">{item.companyName}</p>
+                    ) : null}
+                    <p className="mt-1 text-sm text-slate-600">Source: {item.sourceTable}</p>
+                    <p className="mt-2 text-sm text-amber-900">{item.deferredReason}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-amber-700">Connections</h3>
+              <div className="mt-3 space-y-3">
+                {OM_STARTER_CONNECTIONS.map((connection) => (
+                  <div key={connection.id} className="rounded-2xl border border-amber-200 bg-white/80 p-4">
+                    <p className="font-semibold text-slate-950">{connection.connection}</p>
+                    <p className="mt-1 text-sm text-slate-600">{connection.status}</p>
+                    <p className="mt-1 text-sm text-slate-600">{connection.reason}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="rounded-[28px] border border-rose-200 bg-rose-50 p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-rose-950">Fake Fixtures Removed</h2>
+            <p className="mt-1 text-sm text-rose-800/80">
+              These invented demo rows were removed from the seed path and should not come back.
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {REMOVED_FAKE_SEED_FIXTURES.map((item) => (
+                <span
+                  key={item}
+                  className="rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-rose-700"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-950">Intentional Seed Gaps</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              These gaps are correct. They keep the seed state honest instead of looking more validated than the real data supports.
+            </p>
+
+            <div className="mt-6 space-y-3">
+              {OM_STARTER_SEED_GAPS.map((gap) => (
+                <div key={gap.label} className="rounded-2xl border border-slate-200 p-4">
+                  <p className="font-semibold text-slate-950">{gap.label}</p>
+                  <p className="mt-1 text-sm text-slate-600">{gap.detail}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 };

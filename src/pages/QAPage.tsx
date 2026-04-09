@@ -65,7 +65,9 @@ const QAPage: React.FC = () => {
       <div className="mt-12 p-6 bg-indigo-50 rounded-lg border border-indigo-100">
         <h3 className="text-lg font-bold text-indigo-900 mb-2">Testing Instructions</h3>
         <ol className="list-decimal list-inside text-sm text-indigo-800 space-y-2">
-          <li>Run the <strong>Seed Data</strong> utility at <code className="bg-indigo-100 px-1 rounded">/seed</code>.</li>
+          <li>If legacy fake browser-seed docs may still exist, run <code className="bg-indigo-100 px-1 rounded">npm run cleanup:fake-seed</code> first and review the dry-run output before any execute pass.</li>
+          <li>Run <code className="bg-indigo-100 px-1 rounded">npm run seed:om-starter</code> from the repo root with Firebase admin credentials configured.</li>
+          <li>Use <code className="bg-indigo-100 px-1 rounded">/seed</code> as the read-only registry of approved OM starter records and deferred gaps.</li>
           <li>Log in as different users (you may need to manually update the <code className="bg-indigo-100 px-1 rounded">users</code> collection in Firestore to change your own role for testing).</li>
           <li>Verify that the navigation menu changes based on your role.</li>
           <li>Try to access restricted URLs directly (e.g., <code className="bg-indigo-100 px-1 rounded">/companies</code> as a founder).</li>

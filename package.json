@@ -11,6 +11,9 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "seed:om-starter": "tsx scripts/seed-om-starter.ts",
+    "cleanup:fake-seed": "tsx scripts/cleanup-fake-demo-seed.ts",
+    "cleanup:fake-seed:execute": "tsx scripts/cleanup-fake-demo-seed.ts --execute",
     "validate:patterns": "tsx scripts/validate-patterns.ts",
     "validate:evidence-context": "tsx scripts/validate-company-evidence-context.ts",
     "validate:source-ingestion": "tsx scripts/validate-source-ingestion.ts"
