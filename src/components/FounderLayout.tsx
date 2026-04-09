@@ -2,11 +2,14 @@ import React from 'react';
 import {
   Brain,
   FlaskConical,
+  LayoutTemplate,
   LayoutDashboard,
   Lightbulb,
   MessageSquare,
   Signal as SignalIcon,
   Sparkles,
+  Target,
+  Users2,
 } from 'lucide-react';
 import { AppShellFrame, type ShellNavSection } from './AppShellFrame';
 
@@ -25,6 +28,29 @@ const sections: ShellNavSection[] = [
         path: '/founder/copilot',
         icon: Sparkles,
         description: 'Turn your evidence into a sharper brief before the next decision or review.',
+      },
+    ],
+  },
+  {
+    heading: 'Builder Input Layer',
+    items: [
+      {
+        label: 'Idea to Problem',
+        path: '/founder/problem',
+        icon: Target,
+        description: 'Translate the founder idea into a clear customer problem, current behavior, and weak workaround before writing assumptions.',
+      },
+      {
+        label: 'Lean Canvas',
+        path: '/founder/canvas',
+        icon: LayoutTemplate,
+        description: 'Keep a live Builder canvas that sharpens the segment, problem, alternatives, value promise, and channels.',
+      },
+      {
+        label: 'Early Adopter',
+        path: '/founder/early-adopter',
+        icon: Users2,
+        description: 'Choose the first customer group to learn from before you start outreach and discovery interviews.',
       },
     ],
   },
@@ -70,7 +96,7 @@ const FounderLayout: React.FC = () => (
     tone="founder"
     eyebrow="Builder Workspace"
     title="Build proof before asking for more."
-    summary="This workspace should guide founders through Builder as a staged operating system: interview capture, synthesis, MVP or test design, live testing, readiness, and earned support."
+    summary="This workspace should guide founders through Builder as a staged operating system: problem clarity, Lean Canvas, early adopter focus, interview capture, synthesis, MVP or test design, live testing, readiness, and earned support."
     sections={sections}
   />
 );

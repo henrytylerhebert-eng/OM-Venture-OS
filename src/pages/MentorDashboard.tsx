@@ -27,7 +27,7 @@ import {
   getSignals,
 } from '../services/evidenceService';
 import { getFeedback, getMeetingRequests, submitFeedback } from '../services/feedbackService';
-import { getMentorAssignments } from '../services/mentorService';
+import { getMentorAssignments, getMentorCompanyScopes } from '../services/mentorService';
 import { getPortfolioProgress, getReadinessReviews } from '../services/progressService';
 import { buildCompanyOperatingInsight } from '../lib/companyInsights';
 import {
@@ -42,6 +42,7 @@ import {
   MeetingRequest,
   MeetingStatus,
   MentorAssignment,
+  MentorCompanyScope,
   Pattern,
   PortfolioProgress,
   ReadinessReview,
@@ -127,6 +128,7 @@ const getTopCurrentAlternative = (pattern: Pattern, interviews: Interview[]) => 
 const MentorDashboard: React.FC = () => {
   const { profile } = useAuth();
   const [assignments, setAssignments] = useState<MentorAssignment[]>([]);
+  const [mentorCompanyScopes, setMentorCompanyScopes] = useState<MentorCompanyScope[]>([]);
   const [allCompanies, setAllCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
@@ -154,16 +156,21 @@ const MentorDashboard: React.FC = () => {
       },
       [where('mentorId', '==', profile.personId)]
     );
+    const unsubScopes = getMentorCompanyScopes(
+      (scopes) => {
+        setMentorCompanyScopes(scopes.filter((scope) => scope.active));
+      },
+      [where('mentorId', '==', profile.personId)]
+    );
     const unsubCompanies = getCompanies((companies) => {
       setAllCompanies(companies);
       setLoading(false);
     });
-    const unsubProgress = getPortfolioProgress(setPortfolioProgress);
 
     return () => {
       unsubAssignments();
+      unsubScopes();
       unsubCompanies();
-      unsubProgress();
     };
   }, [profile?.personId]);
 
@@ -171,6 +178,18 @@ const MentorDashboard: React.FC = () => {
     const assignedCompanyIds = new Set(assignments.map((assignment) => assignment.companyId));
     return allCompanies.filter((company) => assignedCompanyIds.has(company.id));
   }, [allCompanies, assignments]);
+  const scopedCompanyIds = useMemo(
+    () => new Set(mentorCompanyScopes.filter((scope) => scope.active).map((scope) => scope.companyId)),
+    [mentorCompanyScopes]
+  );
+  const accessibleAssignedCompanies = useMemo(
+    () => assignedCompanies.filter((company) => scopedCompanyIds.has(company.id)),
+    [assignedCompanies, scopedCompanyIds]
+  );
+  const companiesAwaitingScope = useMemo(
+    () => assignedCompanies.filter((company) => !scopedCompanyIds.has(company.id)),
+    [assignedCompanies, scopedCompanyIds]
+  );
 
   useEffect(() => {
     setSelectedCompanyId((current) => {
@@ -178,12 +197,49 @@ const MentorDashboard: React.FC = () => {
         return current;
       }
 
-      return assignedCompanies[0]?.id || null;
+      return accessibleAssignedCompanies[0]?.id || assignedCompanies[0]?.id || null;
     });
-  }, [assignedCompanies]);
+  }, [accessibleAssignedCompanies, assignedCompanies]);
 
   useEffect(() => {
-    if (!selectedCompanyId) {
+    if (accessibleAssignedCompanies.length === 0) {
+      setPortfolioProgress([]);
+      return undefined;
+    }
+
+    setPortfolioProgress((current) =>
+      current.filter((entry) => accessibleAssignedCompanies.some((company) => company.id === entry.companyId))
+    );
+
+    const unsubscribers = accessibleAssignedCompanies.map((company) =>
+      getPortfolioProgress(
+        (progressEntries) => {
+          setPortfolioProgress((current) => [
+            ...current.filter((entry) => entry.companyId !== company.id),
+            ...progressEntries,
+          ]);
+        },
+        [where('companyId', '==', company.id)]
+      )
+    );
+
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [accessibleAssignedCompanies]);
+
+  useEffect(() => {
+    const hasSelectedCompanyScope = Boolean(selectedCompanyId && scopedCompanyIds.has(selectedCompanyId));
+
+    if (!selectedCompanyId || !hasSelectedCompanyScope) {
+      setCompanyFeedback([]);
+      setMeetingRequests([]);
+      setInterviews([]);
+      setPatterns([]);
+      setAssumptions([]);
+      setExperiments([]);
+      setSignals([]);
+      setReadinessReviews([]);
       return undefined;
     }
 
@@ -206,9 +262,12 @@ const MentorDashboard: React.FC = () => {
       unsubSignals();
       unsubReadiness();
     };
-  }, [selectedCompanyId]);
+  }, [scopedCompanyIds, selectedCompanyId]);
 
   const selectedCompany = assignedCompanies.find((company) => company.id === selectedCompanyId);
+  const selectedCompanyScope = mentorCompanyScopes.find(
+    (scope) => scope.active && scope.companyId === selectedCompanyId
+  );
   const selectedAssignment = assignments.find(
     (assignment) => assignment.companyId === selectedCompanyId && assignment.status === AssignmentStatus.ACTIVE
   );
@@ -353,6 +412,20 @@ const MentorDashboard: React.FC = () => {
         </div>
       </header>
 
+      {companiesAwaitingScope.length > 0 && (
+        <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 text-amber-700" />
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-amber-900">Some mentor assignments are waiting on scope sync.</p>
+              <p className="text-sm leading-6 text-amber-900/80">
+                Your assignment exists, but the deterministic company scope record is not active yet for {companiesAwaitingScope.map((company) => company.name).join(', ')}. The workspace will hold back evidence reads until OM finishes the scope rollout.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.45fr]">
         <aside className="space-y-4">
           <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -387,7 +460,9 @@ const MentorDashboard: React.FC = () => {
                           <p className="mt-1 text-sm text-slate-500">
                             {companyProgress?.finalStage
                               ? formatDirectionLabel(companyProgress.finalStage)
-                              : 'Needs phase review'}
+                              : scopedCompanyIds.has(company.id)
+                                ? 'Needs phase review'
+                                : 'Scope sync pending'}
                           </p>
                         </div>
                         <span
@@ -395,10 +470,16 @@ const MentorDashboard: React.FC = () => {
                             'rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]',
                             selectedCompanyId === company.id
                               ? 'bg-white text-slate-700 ring-1 ring-slate-200'
-                              : 'bg-slate-200 text-slate-600'
+                              : scopedCompanyIds.has(company.id)
+                                ? 'bg-slate-200 text-slate-600'
+                                : 'bg-amber-100 text-amber-700'
                           )}
                         >
-                          {selectedCompanyId === company.id ? 'selected' : 'assignment active'}
+                          {selectedCompanyId === company.id
+                            ? 'selected'
+                            : scopedCompanyIds.has(company.id)
+                              ? 'assignment active'
+                              : 'scope pending'}
                         </span>
                       </div>
                       <p className="mt-3 text-sm leading-6 text-slate-600">{phaseLabel}</p>
@@ -415,7 +496,15 @@ const MentorDashboard: React.FC = () => {
         </aside>
 
         <main className="space-y-6">
-          {selectedCompany && selectedInsight && selectedEvidenceContext ? (
+          {selectedCompany && !selectedCompanyScope ? (
+            <div className="rounded-[32px] border border-amber-200 bg-white p-12 text-center shadow-sm">
+              <ShieldCheck className="mx-auto h-10 w-10 text-amber-500" />
+              <h2 className="mt-4 text-xl font-semibold text-slate-950">Assignment found, company scope still syncing</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                OM has already attached you to {selectedCompany.name}, but the deterministic mentor-company scope record is not active yet. This workspace is intentionally holding back evidence reads so missing scope sync does not look like “no evidence” or “no assignment.”
+              </p>
+            </div>
+          ) : selectedCompany && selectedInsight && selectedEvidenceContext ? (
             <>
               <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

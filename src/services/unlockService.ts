@@ -8,7 +8,11 @@ import {
   UnlockRule,
   UnlockRuleId,
 } from '../types';
-import { DEFAULT_RESOURCE_CATALOG, DEFAULT_UNLOCK_RULES } from '../lib/unlocks';
+import {
+  DEFAULT_RESOURCE_CATALOG,
+  DEFAULT_UNLOCK_RULES,
+  getEffectiveCompanyResourceAccessStatus,
+} from '../lib/unlocks';
 import { handleFirestoreError, OperationType, sanitizeData } from './baseService';
 
 const normalizeResourceCatalog = (
@@ -77,6 +81,8 @@ const normalizeCompanyResourceAccess = (
     tractionSignalCount: 0,
   },
   updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : typeof data.grantedAt === 'string' ? data.grantedAt : '',
+  expiresAt: typeof data.expiresAt === 'string' ? data.expiresAt : undefined,
+  expiredAt: typeof data.expiredAt === 'string' ? data.expiredAt : undefined,
   revokedAt: typeof data.revokedAt === 'string' ? data.revokedAt : undefined,
   revokedReason: typeof data.revokedReason === 'string' ? data.revokedReason : undefined,
 });
@@ -139,6 +145,7 @@ interface GrantCompanyResourceAccessInput {
   grantedByPersonId: string;
   grantedReason: string;
   evidenceSnapshot: CompanyResourceAccessEvidenceSnapshot;
+  expiresAt?: string;
 }
 
 export const grantCompanyResourceAccess = async ({
@@ -149,6 +156,7 @@ export const grantCompanyResourceAccess = async ({
   grantedByPersonId,
   grantedReason,
   evidenceSnapshot,
+  expiresAt,
 }: GrantCompanyResourceAccessInput): Promise<void> => {
   const now = new Date().toISOString();
   const accessId = `${companyId}__${resourceKey}`;
@@ -166,7 +174,11 @@ export const grantCompanyResourceAccess = async ({
         grantedByPersonId,
         grantedReason,
         evidenceSnapshot,
+        expiresAt,
         updatedAt: now,
+        expiredAt: undefined,
+        revokedAt: undefined,
+        revokedReason: undefined,
       })
     );
   } catch (error) {
@@ -197,11 +209,36 @@ export const revokeCompanyResourceAccess = async (
   }
 };
 
+export const setCompanyResourceAccessExpiry = async (
+  companyId: string,
+  resourceKey: string,
+  expiresAt?: string
+): Promise<void> => {
+  const accessId = `${companyId}__${resourceKey}`;
+
+  try {
+    await updateDoc(
+      doc(db, 'companyResourceAccess', accessId),
+      sanitizeData({
+        expiresAt,
+        updatedAt: new Date().toISOString(),
+      })
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `companyResourceAccess/${accessId}`);
+  }
+};
+
+export const getCompanyResourceAccessForCompany = (
+  callback: (items: CompanyResourceAccess[]) => void,
+  companyId: string
+) => getCompanyResourceAccess(callback, [where('companyId', '==', companyId)]);
+
 export const getActiveCompanyResourceAccess = (
   callback: (items: CompanyResourceAccess[]) => void,
   companyId: string
 ) =>
   getCompanyResourceAccess(
-    (items) => callback(items.filter((item) => item.accessStatus === AccessStatus.ACTIVE)),
+    (items) => callback(items.filter((item) => getEffectiveCompanyResourceAccessStatus(item) === AccessStatus.ACTIVE)),
     [where('companyId', '==', companyId)]
   );

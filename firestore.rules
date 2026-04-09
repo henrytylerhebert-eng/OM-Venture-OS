@@ -54,6 +54,20 @@ service cloud.firestore {
         get(/databases/$(database)/documents/companies/$(companyId)).data.founderLeadPersonId == getUserData().personId;
     }
 
+    function mentorCompanyScopeId(companyId) {
+      return getUserData().personId + "__" + companyId;
+    }
+
+    function hasActiveMentorCompanyScope(companyId) {
+      return isMentor() &&
+        exists(/databases/$(database)/documents/mentorCompanyScopes/$(mentorCompanyScopeId(companyId))) &&
+        get(/databases/$(database)/documents/mentorCompanyScopes/$(mentorCompanyScopeId(companyId))).data.active == true;
+    }
+
+    function canReadCompanyScopedFounderData(companyId) {
+      return isStaff() || isFounderLeadForCompany(companyId) || hasActiveMentorCompanyScope(companyId);
+    }
+
     function isValidInterviewPayload(data) {
       return data.companyId is string &&
         data.companyId.size() > 0 &&
@@ -190,8 +204,57 @@ service cloud.firestore {
         data.evidenceSnapshot.experimentCount is number &&
         data.evidenceSnapshot.tractionSignalCount is number &&
         data.updatedAt is string &&
+        (!(data.expiresAt != null) || data.expiresAt is string) &&
+        (!(data.expiredAt != null) || data.expiredAt is string) &&
         (!(data.revokedAt != null) || data.revokedAt is string) &&
         (!(data.revokedReason != null) || data.revokedReason is string);
+    }
+
+    function isValidMentorCompanyScopePayload(data) {
+      return data.mentorId is string &&
+        data.mentorId.size() > 0 &&
+        data.companyId is string &&
+        data.companyId.size() > 0 &&
+        data.mentorAssignmentId is string &&
+        data.mentorAssignmentId.size() > 0 &&
+        data.active is bool &&
+        data.createdAt is string &&
+        data.updatedAt is string;
+    }
+
+    function isValidBuilderFoundationPayload(data) {
+      return data.companyId is string &&
+        data.companyId.size() > 0 &&
+        data.ideaToProblem is map &&
+        data.ideaToProblem.founderIdea is string &&
+        data.ideaToProblem.problemOwner is string &&
+        data.ideaToProblem.problemMoment is string &&
+        data.ideaToProblem.currentBehavior is string &&
+        data.ideaToProblem.currentAlternative is string &&
+        data.ideaToProblem.whyCurrentPathFallsShort is string &&
+        data.ideaToProblem.desiredOutcome is string &&
+        data.leanCanvas is map &&
+        data.leanCanvas.customerSegments is list &&
+        data.leanCanvas.problems is list &&
+        data.leanCanvas.existingAlternatives is list &&
+        data.leanCanvas.uniqueValueProposition is string &&
+        data.leanCanvas.solutionApproach is list &&
+        data.leanCanvas.channels is list &&
+        data.leanCanvas.keyMetrics is list &&
+        data.leanCanvas.revenueStreams is list &&
+        data.leanCanvas.costStructure is list &&
+        data.leanCanvas.unfairAdvantage is string &&
+        data.earlyAdopter is map &&
+        data.earlyAdopter.segmentName is string &&
+        data.earlyAdopter.personaLabel is string &&
+        data.earlyAdopter.situation is string &&
+        data.earlyAdopter.currentBehavior is string &&
+        data.earlyAdopter.whyThisGroupFirst is string &&
+        data.earlyAdopter.reachChannels is list &&
+        data.earlyAdopter.excludedSegments is list &&
+        data.createdAt is string &&
+        data.updatedAt is string &&
+        (!(data.updatedByPersonId != null) || data.updatedByPersonId is string);
     }
 
     // ===============================================================
@@ -252,7 +315,7 @@ service cloud.firestore {
 
     // Portfolio Progress
     match /portfolioProgress/{progId} {
-      allow read: if isAuthenticated();
+      allow read: if canReadCompanyScopedFounderData(resource.data.companyId);
       allow create: if isStaff();
       allow update: if isStaff();
     }
@@ -269,16 +332,21 @@ service cloud.firestore {
       allow write: if isStaff();
     }
 
+    match /mentorCompanyScopes/{scopeId} {
+      allow read: if isStaff() || (isMentor() && resource.data.mentorId == getUserData().personId);
+      allow write: if isStaff() && isValidMentorCompanyScopePayload(request.resource.data);
+    }
+
     // Meeting Requests
     match /meetingRequests/{reqId} {
-      allow read: if isAuthenticated();
+      allow read: if canReadCompanyScopedFounderData(resource.data.companyId);
       allow create: if isAuthenticated();
       allow update: if isAuthenticated();
     }
 
     // Feedback
     match /feedback/{feedId} {
-      allow read: if isStaff() || isMentor() || isFounder();
+      allow read: if canReadCompanyScopedFounderData(resource.data.companyId);
       allow create: if isAuthenticated();
     }
 
@@ -297,6 +365,16 @@ service cloud.firestore {
       allow create, update: if isStaff() && isValidCompanyResourceAccessPayload(request.resource.data);
     }
 
+    match /builderFoundations/{foundationId} {
+      allow read: if isStaff() || isFounderLeadForCompany(foundationId);
+      allow create: if request.resource.data.companyId == foundationId &&
+        (isStaff() || isFounderLeadForCompany(request.resource.data.companyId)) &&
+        isValidBuilderFoundationPayload(request.resource.data);
+      allow update: if request.resource.data.companyId == resource.data.companyId &&
+        (isStaff() || isFounderLeadForCompany(resource.data.companyId)) &&
+        isValidBuilderFoundationPayload(request.resource.data);
+    }
+
     match /sourceSubmissions/{id} {
       allow read: if isStaff();
       allow write: if isStaff() && isValidSourceSubmissionPayload(request.resource.data);
@@ -309,7 +387,7 @@ service cloud.firestore {
 
     // Phase 2: Evidence Engine
     match /interviews/{id} {
-      allow read: if isStaff() || isFounderLeadForCompany(resource.data.companyId) || isMentor();
+      allow read: if canReadCompanyScopedFounderData(resource.data.companyId);
       allow create: if (isStaff() && isValidInterviewPayload(request.resource.data)) ||
         (isFounderLeadForCompany(request.resource.data.companyId) &&
          request.resource.data.interviewerPersonId == getUserData().personId &&
@@ -323,7 +401,7 @@ service cloud.firestore {
     }
 
     match /patterns/{id} {
-      allow read: if isStaff() || isFounderLeadForCompany(resource.data.companyId) || isMentor();
+      allow read: if canReadCompanyScopedFounderData(resource.data.companyId);
       allow create: if (isStaff() && isValidPatternPayload(request.resource.data)) ||
         (isFounderLeadForCompany(request.resource.data.companyId) &&
          request.resource.data.createdByPersonId == getUserData().personId &&
@@ -337,22 +415,22 @@ service cloud.firestore {
     }
 
     match /assumptions/{id} {
-      allow read: if isAuthenticated();
+      allow read: if canReadCompanyScopedFounderData(resource.data.companyId);
       allow write: if isStaff() || isFounder();
     }
 
     match /experiments/{id} {
-      allow read: if isAuthenticated();
+      allow read: if canReadCompanyScopedFounderData(resource.data.companyId);
       allow write: if isStaff() || isFounder();
     }
 
     match /signals/{id} {
-      allow read: if isAuthenticated();
+      allow read: if canReadCompanyScopedFounderData(resource.data.companyId);
       allow write: if isStaff() || isFounder();
     }
 
     match /readinessReviews/{id} {
-      allow read: if isAuthenticated();
+      allow read: if canReadCompanyScopedFounderData(resource.data.companyId);
       allow write: if isStaff();
     }
 

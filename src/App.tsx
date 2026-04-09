@@ -14,6 +14,9 @@ import MentorDashboard from './pages/MentorDashboard';
 import SeedData from './pages/SeedData';
 import QAPage from './pages/QAPage';
 import Copilot from './pages/Copilot';
+import IdeaProblemTranslator from './pages/IdeaProblemTranslator';
+import LeanCanvasBuilder from './pages/LeanCanvasBuilder';
+import EarlyAdopterSelector from './pages/EarlyAdopterSelector';
 import DiscoveryInterviews from './pages/DiscoveryInterviews';
 import Patterns from './pages/Patterns';
 import Assumptions from './pages/Assumptions';
@@ -79,6 +82,9 @@ export default function App() {
             >
               <Route index element={<FounderDashboard />} />
               <Route path="copilot" element={<Copilot />} />
+              <Route path="problem" element={<IdeaProblemTranslator />} />
+              <Route path="canvas" element={<LeanCanvasBuilder />} />
+              <Route path="early-adopter" element={<EarlyAdopterSelector />} />
               <Route path="discovery" element={<DiscoveryInterviews />} />
               <Route path="patterns" element={<Patterns />} />
               <Route path="assumptions" element={<Assumptions />} />
@@ -106,6 +112,9 @@ export default function App() {
             </Route>
 
             <Route path="/copilot" element={<RolePathRedirect segment="copilot" allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF, RoleType.FOUNDER, RoleType.STARTUP_TEAM, RoleType.MENTOR]} />} />
+            <Route path="/problem" element={<RolePathRedirect segment="problem" allowedRoles={[RoleType.FOUNDER, RoleType.STARTUP_TEAM]} />} />
+            <Route path="/canvas" element={<RolePathRedirect segment="canvas" allowedRoles={[RoleType.FOUNDER, RoleType.STARTUP_TEAM]} />} />
+            <Route path="/early-adopter" element={<RolePathRedirect segment="early-adopter" allowedRoles={[RoleType.FOUNDER, RoleType.STARTUP_TEAM]} />} />
             <Route path="/discovery" element={<RolePathRedirect segment="discovery" allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF, RoleType.FOUNDER, RoleType.STARTUP_TEAM, RoleType.MENTOR]} />} />
             <Route path="/patterns" element={<RolePathRedirect segment="patterns" allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF, RoleType.FOUNDER, RoleType.STARTUP_TEAM, RoleType.MENTOR]} />} />
             <Route path="/assumptions" element={<RolePathRedirect segment="assumptions" allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF, RoleType.FOUNDER, RoleType.STARTUP_TEAM, RoleType.MENTOR]} />} />

@@ -24,7 +24,12 @@ import {
   getSignals,
 } from '../services/evidenceService';
 import { createReadinessReview, getReadinessReviews } from '../services/progressService';
-import { getActiveCompanyResourceAccess, grantCompanyResourceAccess } from '../services/unlockService';
+import {
+  getCompanyResourceAccessForCompany,
+  grantCompanyResourceAccess,
+  revokeCompanyResourceAccess,
+  setCompanyResourceAccessExpiry,
+} from '../services/unlockService';
 import {
   buildCompanyEvidenceContextFromCurrentData,
   buildCompanyEvidenceNarrativeBrief,
@@ -116,6 +121,10 @@ const ReadinessQueue: React.FC = () => {
   const [reviewReasons, setReviewReasons] = useState('');
   const [companyResourceAccess, setCompanyResourceAccess] = useState<CompanyResourceAccess[]>([]);
   const [grantingResourceKey, setGrantingResourceKey] = useState<string | null>(null);
+  const [expiringResourceKey, setExpiringResourceKey] = useState<string | null>(null);
+  const [revokingResourceKey, setRevokingResourceKey] = useState<string | null>(null);
+  const [resourceExpiryDrafts, setResourceExpiryDrafts] = useState<Record<string, string>>({});
+  const [resourceRevokeDrafts, setResourceRevokeDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const unsubCompanies = getCompanies((allCompanies) => {
@@ -163,7 +172,7 @@ const ReadinessQueue: React.FC = () => {
       return undefined;
     }
 
-    return getActiveCompanyResourceAccess(setCompanyResourceAccess, selectedCompanyId);
+    return getCompanyResourceAccessForCompany(setCompanyResourceAccess, selectedCompanyId);
   }, [selectedCompanyId]);
 
   const companyRows = useMemo(
@@ -255,6 +264,12 @@ const ReadinessQueue: React.FC = () => {
   const selectedUnlockedResources = selectedResourceView.filter(
     (resource) => resource.accessState === 'unlocked'
   );
+  const selectedExpiredResources = selectedResourceView.filter(
+    (resource) => resource.accessState === 'expired'
+  );
+  const selectedRevokedResources = selectedResourceView.filter(
+    (resource) => resource.accessState === 'revoked'
+  );
   const selectedEligibleResources = selectedResourceView.filter(
     (resource) => resource.accessState === 'eligible'
   );
@@ -315,6 +330,43 @@ const ReadinessQueue: React.FC = () => {
       });
     } finally {
       setGrantingResourceKey(null);
+    }
+  };
+
+  const handleSetExpiry = async (resourceKey: string, draftValue: string) => {
+    if (!selectedRow) {
+      return;
+    }
+
+    setExpiringResourceKey(resourceKey);
+
+    try {
+      await setCompanyResourceAccessExpiry(
+        selectedRow.company.id,
+        resourceKey,
+        draftValue ? new Date(`${draftValue}T23:59:59`).toISOString() : undefined
+      );
+    } finally {
+      setExpiringResourceKey(null);
+    }
+  };
+
+  const handleRevokeAccess = async (resourceKey: string) => {
+    if (!selectedRow) {
+      return;
+    }
+
+    setRevokingResourceKey(resourceKey);
+
+    try {
+      await revokeCompanyResourceAccess(
+        selectedRow.company.id,
+        resourceKey,
+        resourceRevokeDrafts[resourceKey]?.trim() ||
+          'Revoked from the OM staff decision board after support review.'
+      );
+    } finally {
+      setRevokingResourceKey(null);
     }
   };
 
@@ -908,7 +960,7 @@ const ReadinessQueue: React.FC = () => {
                       </div>
 
                       <div className="rounded-3xl border border-slate-200 bg-white p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Already Unlocked</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Active Access</p>
                         <div className="mt-3 space-y-3">
                           {selectedUnlockedResources.length > 0 ? (
                             selectedUnlockedResources.map((resource) => (
@@ -922,10 +974,158 @@ const ReadinessQueue: React.FC = () => {
                                     Activated {format(new Date(resource.grantedAt), 'MMM d, yyyy')}
                                   </p>
                                 ) : null}
+                                <div className="mt-4 rounded-2xl border border-sky-200/60 bg-white/70 p-3">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    Evidence basis
+                                  </p>
+                                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                                    <span className="rounded-full bg-slate-100 px-3 py-1">
+                                      interviews: {resource.evidenceSnapshot?.countedInterviews ?? selectedRow.insight.countedInterviews}
+                                    </span>
+                                    <span className="rounded-full bg-slate-100 px-3 py-1">
+                                      strong pain: {resource.evidenceSnapshot?.highPainInterviewCount ?? selectedRow.insight.highPainInterviewCount}
+                                    </span>
+                                    <span className="rounded-full bg-slate-100 px-3 py-1">
+                                      patterns: {resource.evidenceSnapshot?.strongPatternCount ?? selectedRow.insight.strongPatternCount}
+                                    </span>
+                                    <span className="rounded-full bg-slate-100 px-3 py-1">
+                                      tests: {resource.evidenceSnapshot?.experimentCount ?? selectedRow.insight.experimentCount}
+                                    </span>
+                                    <span className="rounded-full bg-slate-100 px-3 py-1">
+                                      signals: {resource.evidenceSnapshot?.tractionSignalCount ?? selectedRow.insight.tractionSignalCount}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="mt-4 space-y-3 rounded-2xl border border-sky-200/60 bg-white/70 p-3">
+                                  <div>
+                                    <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                      Optional expiry
+                                    </label>
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                      <input
+                                        type="date"
+                                        value={
+                                          resourceExpiryDrafts[resource.key] ??
+                                          (resource.expiresAt ? resource.expiresAt.slice(0, 10) : '')
+                                        }
+                                        onChange={(event) =>
+                                          setResourceExpiryDrafts((current) => ({
+                                            ...current,
+                                            [resource.key]: event.target.value,
+                                          }))
+                                        }
+                                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-slate-400 focus:outline-none"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          void handleSetExpiry(
+                                            resource.key,
+                                            resourceExpiryDrafts[resource.key] ??
+                                              (resource.expiresAt ? resource.expiresAt.slice(0, 10) : '')
+                                          )
+                                        }
+                                        disabled={expiringResourceKey === resource.key}
+                                        className="rounded-full border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+                                      >
+                                        {expiringResourceKey === resource.key ? 'Saving…' : 'Save expiry'}
+                                      </button>
+                                      {resource.expiresAt ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setResourceExpiryDrafts((current) => ({ ...current, [resource.key]: '' }));
+                                            void handleSetExpiry(resource.key, '');
+                                          }}
+                                          disabled={expiringResourceKey === resource.key}
+                                          className="rounded-full border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+                                        >
+                                          Clear expiry
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                    {resource.expiresAt ? (
+                                      <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                        Expires {format(new Date(resource.expiresAt), 'MMM d, yyyy')}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                      Revoke reason
+                                    </label>
+                                    <textarea
+                                      rows={2}
+                                      value={resourceRevokeDrafts[resource.key] || ''}
+                                      onChange={(event) =>
+                                        setResourceRevokeDrafts((current) => ({
+                                          ...current,
+                                          [resource.key]: event.target.value,
+                                        }))
+                                      }
+                                      placeholder="Why should OM close this support access now?"
+                                      className="mt-2 w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-slate-400 focus:outline-none"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleRevokeAccess(resource.key)}
+                                      disabled={revokingResourceKey === resource.key}
+                                      className="mt-3 inline-flex items-center justify-center gap-2 rounded-full border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:bg-rose-100"
+                                    >
+                                      {revokingResourceKey === resource.key ? 'Revoking…' : 'Revoke access'}
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
                             ))
                           ) : (
                             <p className="text-sm text-slate-500">No active support access records are attached yet.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Expired</p>
+                        <div className="mt-3 space-y-3">
+                          {selectedExpiredResources.length > 0 ? (
+                            selectedExpiredResources.map((resource) => (
+                              <div key={resource.key} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                <p className="text-sm font-semibold text-slate-900">{resource.name}</p>
+                                <p className="mt-1 text-sm text-slate-600">
+                                  {resource.grantedReason || 'This support was previously activated from OM review.'}
+                                </p>
+                                {(resource.expiredAt || resource.expiresAt) ? (
+                                  <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    Expired {format(new Date(resource.expiredAt || resource.expiresAt || ''), 'MMM d, yyyy')}
+                                  </p>
+                                ) : null}
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-sm text-slate-500">No founder-visible support is currently in an expired state.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Revoked</p>
+                        <div className="mt-3 space-y-3">
+                          {selectedRevokedResources.length > 0 ? (
+                            selectedRevokedResources.map((resource) => (
+                              <div key={resource.key} className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+                                <p className="text-sm font-semibold text-rose-950">{resource.name}</p>
+                                <p className="mt-1 text-sm text-rose-900/80">
+                                  {resource.revokedReason || 'Revoked after OM support review.'}
+                                </p>
+                                {resource.revokedAt ? (
+                                  <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-rose-700">
+                                    Revoked {format(new Date(resource.revokedAt), 'MMM d, yyyy')}
+                                  </p>
+                                ) : null}
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-sm text-slate-500">No founder-visible support has been revoked yet.</p>
                           )}
                         </div>
                       </div>

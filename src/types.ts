@@ -306,6 +306,50 @@ export interface Company {
   updatedAt: string;
 }
 
+export interface BuilderIdeaToProblem {
+  founderIdea: string;
+  problemOwner: string;
+  problemMoment: string;
+  currentBehavior: string;
+  currentAlternative: string;
+  whyCurrentPathFallsShort: string;
+  desiredOutcome: string;
+}
+
+export interface LeanCanvasDraft {
+  customerSegments: string[];
+  problems: string[];
+  existingAlternatives: string[];
+  uniqueValueProposition: string;
+  solutionApproach: string[];
+  channels: string[];
+  keyMetrics: string[];
+  revenueStreams: string[];
+  costStructure: string[];
+  unfairAdvantage: string;
+}
+
+export interface EarlyAdopterProfile {
+  segmentName: string;
+  personaLabel: string;
+  situation: string;
+  currentBehavior: string;
+  whyThisGroupFirst: string;
+  reachChannels: string[];
+  excludedSegments: string[];
+}
+
+export interface BuilderFoundation {
+  id: string;
+  companyId: string;
+  ideaToProblem: BuilderIdeaToProblem;
+  leanCanvas: LeanCanvasDraft;
+  earlyAdopter: EarlyAdopterProfile;
+  createdAt: string;
+  updatedAt: string;
+  updatedByPersonId?: string;
+}
+
 export interface Cohort {
   id: string;
   name: string;
@@ -398,6 +442,16 @@ export interface MentorAssignment {
   status: AssignmentStatus;
   startDate?: string;
   endDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MentorCompanyScope {
+  id: string;
+  mentorId: string;
+  companyId: string;
+  mentorAssignmentId: string;
+  active: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -715,6 +769,8 @@ export interface CompanyResourceAccess {
   grantedReason: string;
   evidenceSnapshot: CompanyResourceAccessEvidenceSnapshot;
   updatedAt: string;
+  expiresAt?: string;
+  expiredAt?: string;
   revokedAt?: string;
   revokedReason?: string;
 }

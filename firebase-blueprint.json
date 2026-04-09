@@ -58,6 +58,87 @@
       },
       "required": ["name", "organizationId", "active", "createdAt", "updatedAt"]
     },
+    "builderFoundation": {
+      "title": "Builder Foundation",
+      "description": "Front-of-Builder founder inputs that shape the problem, Lean Canvas, and primary early adopter before interviews begin.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "ideaToProblem": {
+          "type": "object",
+          "properties": {
+            "founderIdea": { "type": "string" },
+            "problemOwner": { "type": "string" },
+            "problemMoment": { "type": "string" },
+            "currentBehavior": { "type": "string" },
+            "currentAlternative": { "type": "string" },
+            "whyCurrentPathFallsShort": { "type": "string" },
+            "desiredOutcome": { "type": "string" }
+          },
+          "required": [
+            "founderIdea",
+            "problemOwner",
+            "problemMoment",
+            "currentBehavior",
+            "currentAlternative",
+            "whyCurrentPathFallsShort",
+            "desiredOutcome"
+          ]
+        },
+        "leanCanvas": {
+          "type": "object",
+          "properties": {
+            "customerSegments": { "type": "array", "items": { "type": "string" } },
+            "problems": { "type": "array", "items": { "type": "string" } },
+            "existingAlternatives": { "type": "array", "items": { "type": "string" } },
+            "uniqueValueProposition": { "type": "string" },
+            "solutionApproach": { "type": "array", "items": { "type": "string" } },
+            "channels": { "type": "array", "items": { "type": "string" } },
+            "keyMetrics": { "type": "array", "items": { "type": "string" } },
+            "revenueStreams": { "type": "array", "items": { "type": "string" } },
+            "costStructure": { "type": "array", "items": { "type": "string" } },
+            "unfairAdvantage": { "type": "string" }
+          },
+          "required": [
+            "customerSegments",
+            "problems",
+            "existingAlternatives",
+            "uniqueValueProposition",
+            "solutionApproach",
+            "channels",
+            "keyMetrics",
+            "revenueStreams",
+            "costStructure",
+            "unfairAdvantage"
+          ]
+        },
+        "earlyAdopter": {
+          "type": "object",
+          "properties": {
+            "segmentName": { "type": "string" },
+            "personaLabel": { "type": "string" },
+            "situation": { "type": "string" },
+            "currentBehavior": { "type": "string" },
+            "whyThisGroupFirst": { "type": "string" },
+            "reachChannels": { "type": "array", "items": { "type": "string" } },
+            "excludedSegments": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": [
+            "segmentName",
+            "personaLabel",
+            "situation",
+            "currentBehavior",
+            "whyThisGroupFirst",
+            "reachChannels",
+            "excludedSegments"
+          ]
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedByPersonId": { "type": "string" }
+      },
+      "required": ["companyId", "ideaToProblem", "leanCanvas", "earlyAdopter", "createdAt", "updatedAt"]
+    },
     "cohort": {
       "title": "Cohort",
       "description": "A startup support cohort program.",
@@ -177,6 +258,20 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["companyId", "mentorId", "assignedByPersonId", "assignmentType", "status", "createdAt", "updatedAt"]
+    },
+    "mentorCompanyScope": {
+      "title": "Mentor Company Scope",
+      "description": "Deterministic mentor-to-company access helper record derived from mentor assignments.",
+      "type": "object",
+      "properties": {
+        "mentorId": { "type": "string" },
+        "companyId": { "type": "string" },
+        "mentorAssignmentId": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["mentorId", "companyId", "mentorAssignmentId", "active", "createdAt", "updatedAt"]
     },
     "meetingRequest": {
       "title": "Meeting Request",
@@ -555,6 +650,8 @@
           ]
         },
         "updatedAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "expiredAt": { "type": "string", "format": "date-time" },
         "revokedAt": { "type": "string", "format": "date-time" },
         "revokedReason": { "type": "string" }
       },
@@ -630,12 +727,14 @@
     "/organizations/{orgId}": { "schema": "organization", "description": "Organizations in the ecosystem." },
     "/people/{personId}": { "schema": "person", "description": "People in the system." },
     "/companies/{companyId}": { "schema": "company", "description": "Startup company records." },
+    "/builderFoundations/{companyId}": { "schema": "builderFoundation", "description": "Founder-owned Builder input layer for problem clarity, Lean Canvas, and early adopter definition." },
     "/cohorts/{cohortId}": { "schema": "cohort", "description": "Available cohort programs." },
     "/cohortApplications/{applicationId}": { "schema": "cohortApplication", "description": "Applications for cohorts." },
     "/cohortParticipations/{participationId}": { "schema": "cohortParticipation", "description": "Active cohort memberships." },
     "/portfolioProgress/{progressId}": { "schema": "portfolioProgress", "description": "Tracking startup progress." },
     "/mentors/{mentorId}": { "schema": "mentor", "description": "Mentor profiles." },
     "/mentorAssignments/{assignmentId}": { "schema": "mentorAssignment", "description": "Mentor-company links." },
+    "/mentorCompanyScopes/{scopeId}": { "schema": "mentorCompanyScope", "description": "Deterministic mentor-to-company scope helper derived from mentor assignments." },
     "/meetingRequests/{meetingRequestId}": { "schema": "meetingRequest", "description": "Meeting requests." },
     "/feedback/{feedbackId}": { "schema": "feedback", "description": "Meeting notes and feedback." },
     "/sourceSubmissions/{sourceSubmissionId}": { "schema": "sourceSubmission", "description": "Raw Airtable- and Jotform-origin source evidence before normalization." },

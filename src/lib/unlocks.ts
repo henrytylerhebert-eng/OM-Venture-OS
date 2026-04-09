@@ -1,6 +1,7 @@
 import {
   AccessStatus,
   CompanyResourceAccess,
+  CompanyResourceAccessEvidenceSnapshot,
   ResourceCatalogCategory,
   ResourceCatalogItem,
   UnlockRule,
@@ -24,11 +25,38 @@ export interface DerivedUnlockResource {
 }
 
 export interface CompanyResourceViewItem extends ResourceCatalogItem {
-  accessState: 'unlocked' | 'eligible' | 'locked';
+  accessState: 'unlocked' | 'eligible' | 'locked' | 'expired' | 'revoked';
   grantedAt?: string;
   grantedReason?: string;
+  evidenceSnapshot?: CompanyResourceAccessEvidenceSnapshot;
+  expiresAt?: string;
+  expiredAt?: string;
+  revokedAt?: string;
+  revokedReason?: string;
   missingProof: string[];
 }
+
+export const getEffectiveCompanyResourceAccessStatus = (
+  accessRecord: CompanyResourceAccess,
+  referenceDate = new Date()
+) => {
+  if (accessRecord.accessStatus === AccessStatus.REVOKED) {
+    return AccessStatus.REVOKED;
+  }
+
+  if (accessRecord.accessStatus === AccessStatus.EXPIRED) {
+    return AccessStatus.EXPIRED;
+  }
+
+  if (accessRecord.expiresAt) {
+    const expiresAt = new Date(accessRecord.expiresAt).getTime();
+    if (!Number.isNaN(expiresAt) && expiresAt <= referenceDate.getTime()) {
+      return AccessStatus.EXPIRED;
+    }
+  }
+
+  return AccessStatus.ACTIVE;
+};
 
 export const DEFAULT_UNLOCK_RULES: UnlockRule[] = [
   {
@@ -252,10 +280,8 @@ export const buildCompanyResourceView = ({
   availableResourceKeys: string[];
   lockedResources: DerivedUnlockResource[];
 }): CompanyResourceViewItem[] => {
-  const activeAccessByKey = accessRecords.reduce<Record<string, CompanyResourceAccess>>((acc, record) => {
-    if (record.accessStatus === AccessStatus.ACTIVE) {
-      acc[record.resourceKey] = record;
-    }
+  const accessByKey = accessRecords.reduce<Record<string, CompanyResourceAccess>>((acc, record) => {
+    acc[record.resourceKey] = record;
     return acc;
   }, {});
 
@@ -268,13 +294,45 @@ export const buildCompanyResourceView = ({
   return catalog
     .filter((resource) => resource.active)
     .map((resource) => {
-      const activeAccess = activeAccessByKey[resource.key];
-      if (activeAccess) {
+      const accessRecord = accessByKey[resource.key];
+      const accessStatus = accessRecord
+        ? getEffectiveCompanyResourceAccessStatus(accessRecord)
+        : undefined;
+
+      if (accessRecord && accessStatus === AccessStatus.ACTIVE) {
         return {
           ...resource,
           accessState: 'unlocked',
-          grantedAt: activeAccess.grantedAt,
-          grantedReason: activeAccess.grantedReason,
+          grantedAt: accessRecord.grantedAt,
+          grantedReason: accessRecord.grantedReason,
+          evidenceSnapshot: accessRecord.evidenceSnapshot,
+          expiresAt: accessRecord.expiresAt,
+          missingProof: [],
+        };
+      }
+
+      if (accessRecord && accessStatus === AccessStatus.EXPIRED) {
+        return {
+          ...resource,
+          accessState: 'expired',
+          grantedAt: accessRecord.grantedAt,
+          grantedReason: accessRecord.grantedReason,
+          evidenceSnapshot: accessRecord.evidenceSnapshot,
+          expiresAt: accessRecord.expiresAt,
+          expiredAt: accessRecord.expiredAt || accessRecord.expiresAt,
+          missingProof: [],
+        };
+      }
+
+      if (accessRecord && accessStatus === AccessStatus.REVOKED) {
+        return {
+          ...resource,
+          accessState: 'revoked',
+          grantedAt: accessRecord.grantedAt,
+          grantedReason: accessRecord.grantedReason,
+          evidenceSnapshot: accessRecord.evidenceSnapshot,
+          revokedAt: accessRecord.revokedAt,
+          revokedReason: accessRecord.revokedReason,
           missingProof: [],
         };
       }

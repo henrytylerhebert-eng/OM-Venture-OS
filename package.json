@@ -12,6 +12,8 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "seed:om-starter": "tsx scripts/seed-om-starter.ts",
+    "backfill:mentor-company-scopes": "tsx scripts/backfill-mentor-company-scopes.ts",
+    "backfill:mentor-company-scopes:execute": "tsx scripts/backfill-mentor-company-scopes.ts --execute",
     "cleanup:fake-seed": "tsx scripts/cleanup-fake-demo-seed.ts",
     "cleanup:fake-seed:execute": "tsx scripts/cleanup-fake-demo-seed.ts --execute",
     "validate:patterns": "tsx scripts/validate-patterns.ts",

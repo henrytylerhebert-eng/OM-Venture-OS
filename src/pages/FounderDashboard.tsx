@@ -9,9 +9,12 @@ import {
   CheckCircle2,
   Clock3,
   FlaskConical,
+  LayoutTemplate,
   MessageSquare,
   Plus,
   Signal as SignalIcon,
+  Target,
+  Users2,
 } from 'lucide-react';
 import { useAuth } from '../components/AuthProvider';
 import { createCompany, getCompanies } from '../services/companyService';
@@ -26,10 +29,12 @@ import {
 } from '../services/evidenceService';
 import { getMentorAssignments } from '../services/mentorService';
 import { getPortfolioProgress, getReadinessReviews } from '../services/progressService';
-import { getActiveCompanyResourceAccess } from '../services/unlockService';
+import { getCompanyResourceAccessForCompany } from '../services/unlockService';
+import { getBuilderFoundation } from '../services/builderFoundationService';
 import {
   Assumption,
   AssignmentStatus,
+  BuilderFoundation,
   Cohort,
   CohortApplication,
   CompanyResourceAccess,
@@ -46,6 +51,7 @@ import {
   ReadinessType,
   Signal,
 } from '../types';
+import { createEmptyBuilderFoundation, getBuilderFoundationCompletion } from '../lib/builderFoundation';
 import { buildCompanyOperatingInsight } from '../lib/companyInsights';
 import { buildCompanyResourceView } from '../lib/unlocks';
 import { getRoleScopedPath } from '../lib/roleRouting';
@@ -71,6 +77,7 @@ const FounderDashboard: React.FC = () => {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [readinessReviews, setReadinessReviews] = useState<ReadinessReview[]>([]);
   const [companyResourceAccess, setCompanyResourceAccess] = useState<CompanyResourceAccess[]>([]);
+  const [builderFoundation, setBuilderFoundation] = useState<BuilderFoundation | null>(null);
 
   useEffect(() => {
     if (!profile?.personId) {
@@ -114,6 +121,7 @@ const FounderDashboard: React.FC = () => {
       setSignals([]);
       setReadinessReviews([]);
       setCompanyResourceAccess([]);
+      setBuilderFoundation(null);
       return undefined;
     }
 
@@ -123,7 +131,10 @@ const FounderDashboard: React.FC = () => {
     const unsubExperiments = getExperiments(setExperiments, selectedCompanyId);
     const unsubSignals = getSignals(setSignals, selectedCompanyId);
     const unsubReadiness = getReadinessReviews(setReadinessReviews, selectedCompanyId);
-    const unsubResourceAccess = getActiveCompanyResourceAccess(setCompanyResourceAccess, selectedCompanyId);
+    const unsubResourceAccess = getCompanyResourceAccessForCompany(setCompanyResourceAccess, selectedCompanyId);
+    const unsubBuilderFoundation = getBuilderFoundation(selectedCompanyId, (record) => {
+      setBuilderFoundation(record || createEmptyBuilderFoundation(selectedCompanyId));
+    });
 
     return () => {
       unsubInterviews();
@@ -133,6 +144,7 @@ const FounderDashboard: React.FC = () => {
       unsubSignals();
       unsubReadiness();
       unsubResourceAccess();
+      unsubBuilderFoundation();
     };
   }, [selectedCompanyId]);
 
@@ -202,6 +214,10 @@ const FounderDashboard: React.FC = () => {
     () => summarizePatternWidgets(patterns).strongestPattern,
     [patterns]
   );
+  const foundationCompletion = useMemo(
+    () => getBuilderFoundationCompletion(builderFoundation),
+    [builderFoundation]
+  );
   const synthesisReady = Boolean(
     selectedInsight && selectedInsight.strongPatternCount > 0 && selectedInsight.assumptionCount > 0 && strongestPattern
   );
@@ -209,12 +225,33 @@ const FounderDashboard: React.FC = () => {
     strongestPattern?.status.replace(/_/g, ' ') || 'direction still needs a decision';
   const currentBuilderStep = selectedInsight
     ? selectedInsight.countedInterviews === 0
-      ? {
-          label: 'Interview Capture',
-          description: 'Start by logging customer conversations with clear pain, segment, alternatives, and quotes before you try to synthesize anything.',
-          nextAction: 'Log interviews',
-          nextPath: getRoleScopedPath(profile?.role, 'discovery'),
-        }
+      ? !foundationCompletion.ideaToProblemComplete
+        ? {
+            label: 'Idea-to-Problem Translator',
+            description: 'Start Builder by naming who has the problem, what they do now, and why that path falls short before you collect discovery evidence.',
+            nextAction: 'Translate the problem',
+            nextPath: getRoleScopedPath(profile?.role, 'problem'),
+          }
+        : !foundationCompletion.leanCanvasComplete
+          ? {
+              label: 'Lean Canvas Builder',
+              description: 'Turn the problem draft into a live Builder canvas with clear segments, alternatives, channels, and value promise before interviews start.',
+              nextAction: 'Build the canvas',
+              nextPath: getRoleScopedPath(profile?.role, 'canvas'),
+            }
+          : !foundationCompletion.earlyAdopterComplete
+            ? {
+                label: 'Early Adopter Selector',
+                description: 'Choose the first customer group to learn from before you begin outreach and interview capture.',
+                nextAction: 'Select the early adopter',
+                nextPath: getRoleScopedPath(profile?.role, 'early-adopter'),
+              }
+            : {
+                label: 'Interview Capture',
+                description: 'Start logging customer conversations with clear pain, segment, alternatives, and quotes before you try to synthesize anything.',
+                nextAction: 'Log interviews',
+                nextPath: getRoleScopedPath(profile?.role, 'discovery'),
+              }
       : !synthesisReady
         ? {
             label: 'Patterns & Assumptions',
@@ -233,13 +270,63 @@ const FounderDashboard: React.FC = () => {
   const builderJourneySteps = selectedCompany
     ? [
         {
+          label: 'Idea-to-Problem Translator',
+          path: getRoleScopedPath(profile?.role, 'problem'),
+          description: 'Translate the founder idea into a real customer problem, current behavior, and weak workaround.',
+          count: foundationCompletion.ideaToProblemComplete ? 1 : 0,
+          detail: builderFoundation?.ideaToProblem.problemOwner || 'Name the person with the problem first',
+          icon: Target,
+          state: foundationCompletion.ideaToProblemComplete ? 'complete' : 'current',
+        },
+        {
+          label: 'Lean Canvas Builder',
+          path: getRoleScopedPath(profile?.role, 'canvas'),
+          description: foundationCompletion.ideaToProblemComplete
+            ? 'Keep the Lean Canvas live as the working model for the problem, segment, alternatives, and value promise.'
+            : 'Locked until the problem owner, current behavior, and weak workaround are named.',
+          count:
+            (builderFoundation?.leanCanvas.customerSegments.length || 0) +
+            (builderFoundation?.leanCanvas.problems.length || 0),
+          detail: foundationCompletion.leanCanvasComplete
+            ? `${builderFoundation?.leanCanvas.customerSegments.length || 0} segment${(builderFoundation?.leanCanvas.customerSegments.length || 0) === 1 ? '' : 's'} / ${builderFoundation?.leanCanvas.problems.length || 0} problem${(builderFoundation?.leanCanvas.problems.length || 0) === 1 ? '' : 's'}`
+            : 'Build the working model before interviews start',
+          icon: LayoutTemplate,
+          state:
+            !foundationCompletion.ideaToProblemComplete
+              ? 'locked'
+              : foundationCompletion.leanCanvasComplete
+                ? 'complete'
+                : 'current',
+        },
+        {
+          label: 'Early Adopter Selector',
+          path: getRoleScopedPath(profile?.role, 'early-adopter'),
+          description: foundationCompletion.leanCanvasComplete
+            ? 'Choose the first customer group to learn from and where you can reach them.'
+            : 'Locked until the Lean Canvas is clear enough to support a real target.',
+          count: foundationCompletion.earlyAdopterComplete ? 1 : 0,
+          detail: builderFoundation?.earlyAdopter.segmentName || 'Pick the first segment to learn from',
+          icon: Users2,
+          state:
+            !foundationCompletion.leanCanvasComplete
+              ? 'locked'
+              : foundationCompletion.earlyAdopterComplete
+                ? 'complete'
+                : 'current',
+        },
+        {
           label: 'Interview Capture',
           path: getRoleScopedPath(profile?.role, 'discovery'),
           description: 'Capture customer truth before you try to synthesize or design a test.',
           count: selectedInsight?.countedInterviews || 0,
           detail: `${selectedInsight?.highPainInterviewCount || 0} strong pain signal${selectedInsight?.highPainInterviewCount === 1 ? '' : 's'}`,
           icon: MessageSquare,
-          state: (selectedInsight?.countedInterviews || 0) === 0 ? 'current' : 'complete',
+          state:
+            !foundationCompletion.interviewReady
+              ? 'locked'
+              : (selectedInsight?.countedInterviews || 0) === 0
+                ? 'current'
+                : 'complete',
         },
         {
           label: 'Patterns & Assumptions',
@@ -249,7 +336,7 @@ const FounderDashboard: React.FC = () => {
           detail: `${selectedInsight?.strongPatternCount || 0} pattern${selectedInsight?.strongPatternCount === 1 ? '' : 's'} / ${selectedInsight?.assumptionCount || 0} assumption${selectedInsight?.assumptionCount === 1 ? '' : 's'}`,
           icon: Brain,
           state:
-            (selectedInsight?.countedInterviews || 0) === 0
+            !foundationCompletion.interviewReady || (selectedInsight?.countedInterviews || 0) === 0
               ? 'locked'
               : !synthesisReady
                 ? 'current'
@@ -305,6 +392,12 @@ const FounderDashboard: React.FC = () => {
   const eligibleResources = resourceView.filter(
     (resource) => resource.founderVisible && resource.accessState === 'eligible'
   );
+  const expiredResources = resourceView.filter(
+    (resource) => resource.founderVisible && resource.accessState === 'expired'
+  );
+  const revokedResources = resourceView.filter(
+    (resource) => resource.founderVisible && resource.accessState === 'revoked'
+  );
   const lockedResourceView = resourceView.filter(
     (resource) => resource.founderVisible && resource.accessState === 'locked'
   );
@@ -323,7 +416,7 @@ const FounderDashboard: React.FC = () => {
           <div className="space-y-2">
             <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Build proof before asking for more support.</h1>
             <p className="max-w-3xl text-sm leading-6 text-slate-600">
-              This workspace follows Builder as an operating system: customer truth, synthesis, testing, readiness, and earned support. It is not just a place to store notes.
+              This workspace follows Builder as an operating system: problem clarity, customer truth, synthesis, testing, readiness, and earned support. It is not just a place to store notes.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -424,6 +517,65 @@ const FounderDashboard: React.FC = () => {
             </div>
           </section>
 
+          <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-2">
+                <h2 className="text-lg font-semibold text-slate-950">Builder input layer</h2>
+                <p className="max-w-3xl text-sm leading-6 text-slate-500">
+                  These founder inputs are not proof. They shape who you talk to, what you ask, and what assumptions and outreach lanes should exist later.
+                </p>
+              </div>
+              <Link
+                to={
+                  !foundationCompletion.ideaToProblemComplete
+                    ? getRoleScopedPath(profile?.role, 'problem')
+                    : !foundationCompletion.leanCanvasComplete
+                      ? getRoleScopedPath(profile?.role, 'canvas')
+                      : !foundationCompletion.earlyAdopterComplete
+                        ? getRoleScopedPath(profile?.role, 'early-adopter')
+                        : getRoleScopedPath(profile?.role, 'discovery')
+                }
+                className="inline-flex items-center gap-2 rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                {foundationCompletion.interviewReady ? 'Open Interview Capture' : 'Complete Builder inputs'}
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-3xl bg-slate-50 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Who has the problem</p>
+                <p className="mt-3 text-sm font-semibold text-slate-950">
+                  {builderFoundation?.ideaToProblem.problemOwner || 'Still unnamed'}
+                </p>
+                <p className="mt-2 text-sm text-slate-500">
+                  {builderFoundation?.ideaToProblem.problemMoment || 'Name the moment when the pain shows up.'}
+                </p>
+              </div>
+              <div className="rounded-3xl bg-slate-50 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">What they do now</p>
+                <p className="mt-3 text-sm font-semibold text-slate-950">
+                  {builderFoundation?.ideaToProblem.currentBehavior || 'Current behavior still needs to be described'}
+                </p>
+              </div>
+              <div className="rounded-3xl bg-slate-50 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Why it falls short</p>
+                <p className="mt-3 text-sm font-semibold text-slate-950">
+                  {builderFoundation?.ideaToProblem.whyCurrentPathFallsShort || 'Weak workaround is still unclear'}
+                </p>
+              </div>
+              <div className="rounded-3xl bg-slate-50 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Primary early adopter</p>
+                <p className="mt-3 text-sm font-semibold text-slate-950">
+                  {builderFoundation?.earlyAdopter.segmentName || 'Still not chosen'}
+                </p>
+                <p className="mt-2 text-sm text-slate-500">
+                  {builderFoundation?.earlyAdopter.personaLabel || 'Choose the first role or person to learn from.'}
+                </p>
+              </div>
+            </div>
+          </section>
+
           <section className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
             <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -503,6 +655,11 @@ const FounderDashboard: React.FC = () => {
                             Unlocked {new Date(resource.grantedAt).toLocaleDateString()}
                           </p>
                         ) : null}
+                        {resource.expiresAt ? (
+                          <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                            Expires {new Date(resource.expiresAt).toLocaleDateString()}
+                          </p>
+                        ) : null}
                       </div>
                     ))
                   ) : (
@@ -529,6 +686,58 @@ const FounderDashboard: React.FC = () => {
                   ) : (
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
                       No support pathways are currently waiting on staff activation.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-slate-950">Expired Access</h2>
+                <p className="mt-1 text-sm text-slate-500">Support that was previously open but has now timed out.</p>
+                <div className="mt-5 space-y-3">
+                  {expiredResources.length > 0 ? (
+                    expiredResources.map((resource) => (
+                      <div key={resource.key} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <p className="text-sm font-semibold text-slate-900">{resource.name}</p>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {resource.grantedReason || 'This support was previously opened by OM staff.'}
+                        </p>
+                        {(resource.expiredAt || resource.expiresAt) ? (
+                          <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            Expired {new Date(resource.expiredAt || resource.expiresAt || '').toLocaleDateString()}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                      No support pathways are currently in an expired state.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-slate-950">Revoked Access</h2>
+                <p className="mt-1 text-sm text-slate-500">Support OM staff explicitly closed after review.</p>
+                <div className="mt-5 space-y-3">
+                  {revokedResources.length > 0 ? (
+                    revokedResources.map((resource) => (
+                      <div key={resource.key} className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+                        <p className="text-sm font-semibold text-rose-900">{resource.name}</p>
+                        <p className="mt-1 text-sm text-rose-800/80">
+                          {resource.revokedReason || 'OM staff revoked this support access after review.'}
+                        </p>
+                        {resource.revokedAt ? (
+                          <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-rose-700">
+                            Revoked {new Date(resource.revokedAt).toLocaleDateString()}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                      No support pathways are currently in a revoked state.
                     </div>
                   )}
                 </div>
@@ -579,7 +788,7 @@ const FounderDashboard: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">Builder Journey</h2>
-                  <p className="mt-1 text-sm text-slate-500">Move from interview capture into synthesis, then into the smallest useful test.</p>
+                  <p className="mt-1 text-sm text-slate-500">Move from problem clarity into discovery, synthesis, and then the smallest useful test.</p>
                 </div>
               </div>
               <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -703,6 +912,10 @@ const FounderDashboard: React.FC = () => {
                     <p className="mt-1 text-sm font-semibold text-slate-950">
                       {unlockedResources.length > 0
                         ? `${unlockedResources.length} support path${unlockedResources.length === 1 ? '' : 's'} unlocked`
+                        : expiredResources.length > 0
+                          ? `${expiredResources.length} path${expiredResources.length === 1 ? '' : 's'} expired`
+                          : revokedResources.length > 0
+                            ? `${revokedResources.length} path${revokedResources.length === 1 ? '' : 's'} revoked`
                         : eligibleResources.length > 0
                           ? `${eligibleResources.length} path${eligibleResources.length === 1 ? '' : 's'} waiting on staff activation`
                           : 'More Builder proof still needed'}
