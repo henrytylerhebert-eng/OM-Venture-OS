@@ -168,6 +168,32 @@ service cloud.firestore {
         (!(data.resolutionNotes != null) || data.resolutionNotes is string);
     }
 
+    function isValidCompanyResourceAccessPayload(data) {
+      return data.companyId is string &&
+        data.companyId.size() > 0 &&
+        data.resourceKey is string &&
+        data.resourceKey.size() > 0 &&
+        data.resourceNameSnapshot is string &&
+        data.resourceNameSnapshot.size() > 0 &&
+        data.unlockRuleId in ['validation_level_1', 'validation_level_2'] &&
+        data.accessStatus in ['active', 'expired', 'revoked'] &&
+        data.grantedAt is string &&
+        data.grantedByPersonId is string &&
+        data.grantedByPersonId.size() > 0 &&
+        data.grantedReason is string &&
+        data.grantedReason.size() > 0 &&
+        data.evidenceSnapshot is map &&
+        data.evidenceSnapshot.countedInterviews is number &&
+        data.evidenceSnapshot.highPainInterviewCount is number &&
+        data.evidenceSnapshot.strongPatternCount is number &&
+        data.evidenceSnapshot.assumptionCount is number &&
+        data.evidenceSnapshot.experimentCount is number &&
+        data.evidenceSnapshot.tractionSignalCount is number &&
+        data.updatedAt is string &&
+        (!(data.revokedAt != null) || data.revokedAt is string) &&
+        (!(data.revokedReason != null) || data.revokedReason is string);
+    }
+
     // ===============================================================
     // Collection Rules
     // ===============================================================
@@ -254,6 +280,21 @@ service cloud.firestore {
     match /feedback/{feedId} {
       allow read: if isStaff() || isMentor() || isFounder();
       allow create: if isAuthenticated();
+    }
+
+    match /resourceCatalog/{resourceId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
+    }
+
+    match /unlockRules/{ruleId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
+    }
+
+    match /companyResourceAccess/{accessId} {
+      allow read: if isStaff() || (isFounderLike() && isFounderLeadForCompany(resource.data.companyId));
+      allow create, update: if isStaff() && isValidCompanyResourceAccessPayload(request.resource.data);
     }
 
     match /sourceSubmissions/{id} {

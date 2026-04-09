@@ -475,8 +475,8 @@
       "type": "object",
       "properties": {
         "companyId": { "type": "string" },
-        "reviewType": { "type": "string", "enum": ["builder_completion", "mentor_ready", "intern_ready", "pitch_ready", "investor_ready"] },
-        "status": { "type": "string", "enum": ["ready", "not_ready", "needs_review"] },
+        "reviewType": { "type": "string", "enum": ["builder_completion", "mentor_ready", "intern_ready", "pitch_ready", "investor_ready", "cohort_admission", "investment_ready"] },
+        "status": { "type": "string", "enum": ["ready", "not_ready", "needs_review", "needs_work"] },
         "reasons": { "type": "array", "items": { "type": "string" } },
         "missingItems": { "type": "array", "items": { "type": "string" } },
         "reviewedByPersonId": { "type": "string" },
@@ -484,6 +484,92 @@
         "notes": { "type": "string" }
       },
       "required": ["companyId", "reviewType", "status", "reviewedByPersonId", "reviewedAt"]
+    },
+    "resourceCatalogItem": {
+      "title": "Resource Catalog Item",
+      "description": "Support resource that can be opened for a company once Builder proof reaches the right threshold.",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string", "enum": ["program", "mentor", "pitch", "build", "capital"] },
+        "unlockRuleId": { "type": "string", "enum": ["validation_level_1", "validation_level_2"] },
+        "description": { "type": "string" },
+        "founderVisible": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["key", "name", "category", "unlockRuleId", "description", "founderVisible", "active", "createdAt", "updatedAt"]
+    },
+    "unlockRule": {
+      "title": "Unlock Rule",
+      "description": "Evidence-grounded rule that explains when a support resource becomes eligible for staff activation.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "unlockRuleId": { "type": "string", "enum": ["validation_level_1", "validation_level_2"] },
+        "minimumCountedInterviews": { "type": "number" },
+        "minimumHighPainInterviews": { "type": "number" },
+        "minimumStrongPatterns": { "type": "number" },
+        "minimumAssumptions": { "type": "number" },
+        "minimumExperiments": { "type": "number" },
+        "minimumTractionSignals": { "type": "number" },
+        "rationale": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "unlockRuleId", "rationale", "active", "createdAt", "updatedAt"]
+    },
+    "companyResourceAccess": {
+      "title": "Company Resource Access",
+      "description": "Persistent record of support that OM has actively opened for a company.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "resourceKey": { "type": "string" },
+        "resourceNameSnapshot": { "type": "string" },
+        "unlockRuleId": { "type": "string", "enum": ["validation_level_1", "validation_level_2"] },
+        "accessStatus": { "type": "string", "enum": ["active", "expired", "revoked"] },
+        "grantedAt": { "type": "string", "format": "date-time" },
+        "grantedByPersonId": { "type": "string" },
+        "grantedReason": { "type": "string" },
+        "evidenceSnapshot": {
+          "type": "object",
+          "properties": {
+            "countedInterviews": { "type": "number" },
+            "highPainInterviewCount": { "type": "number" },
+            "strongPatternCount": { "type": "number" },
+            "assumptionCount": { "type": "number" },
+            "experimentCount": { "type": "number" },
+            "tractionSignalCount": { "type": "number" }
+          },
+          "required": [
+            "countedInterviews",
+            "highPainInterviewCount",
+            "strongPatternCount",
+            "assumptionCount",
+            "experimentCount",
+            "tractionSignalCount"
+          ]
+        },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "revokedAt": { "type": "string", "format": "date-time" },
+        "revokedReason": { "type": "string" }
+      },
+      "required": [
+        "companyId",
+        "resourceKey",
+        "resourceNameSnapshot",
+        "unlockRuleId",
+        "accessStatus",
+        "grantedAt",
+        "grantedByPersonId",
+        "grantedReason",
+        "evidenceSnapshot",
+        "updatedAt"
+      ]
     },
     "investorOrganization": {
       "title": "Investor Organization",
@@ -560,6 +646,9 @@
     "/experiments/{experimentId}": { "schema": "experiment", "description": "Validation experiments." },
     "/signals/{signalId}": { "schema": "signal", "description": "Traction signals." },
     "/readinessReviews/{reviewId}": { "schema": "readinessReview", "description": "Official readiness assessments." },
+    "/resourceCatalog/{resourceId}": { "schema": "resourceCatalogItem", "description": "Support resources that can be opened once proof thresholds are met." },
+    "/unlockRules/{unlockRuleId}": { "schema": "unlockRule", "description": "Evidence-grounded rules for support activation." },
+    "/companyResourceAccess/{accessId}": { "schema": "companyResourceAccess", "description": "Persistent record of support access opened for a company." },
     "/investorOrganizations/{investorOrgId}": { "schema": "investorOrganization", "description": "Investor organizations." },
     "/investorReviewAccess/{accessId}": { "schema": "investorReviewAccess", "description": "Access granted to investors." },
     "/investorPipeline/{pipelineId}": { "schema": "investorPipeline", "description": "Investor pipeline tracking." }
