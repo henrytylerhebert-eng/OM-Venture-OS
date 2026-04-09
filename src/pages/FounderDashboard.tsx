@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   Clock3,
   FlaskConical,
-  Lightbulb,
   MessageSquare,
   Plus,
   Signal as SignalIcon,
@@ -27,11 +26,13 @@ import {
 } from '../services/evidenceService';
 import { getMentorAssignments } from '../services/mentorService';
 import { getPortfolioProgress, getReadinessReviews } from '../services/progressService';
+import { getActiveCompanyResourceAccess } from '../services/unlockService';
 import {
   Assumption,
   AssignmentStatus,
   Cohort,
   CohortApplication,
+  CompanyResourceAccess,
   Company,
   DecisionStatus,
   Experiment,
@@ -46,7 +47,11 @@ import {
   Signal,
 } from '../types';
 import { buildCompanyOperatingInsight } from '../lib/companyInsights';
+import { buildCompanyResourceView } from '../lib/unlocks';
 import { getRoleScopedPath } from '../lib/roleRouting';
+import { cn } from '../lib/utils';
+
+const formatDirectionLabel = (value: string) => value.replace(/_/g, ' ');
 
 const FounderDashboard: React.FC = () => {
   const { profile } = useAuth();
@@ -65,6 +70,7 @@ const FounderDashboard: React.FC = () => {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [readinessReviews, setReadinessReviews] = useState<ReadinessReview[]>([]);
+  const [companyResourceAccess, setCompanyResourceAccess] = useState<CompanyResourceAccess[]>([]);
 
   useEffect(() => {
     if (!profile?.personId) {
@@ -101,6 +107,13 @@ const FounderDashboard: React.FC = () => {
 
   useEffect(() => {
     if (!selectedCompanyId) {
+      setInterviews([]);
+      setPatterns([]);
+      setAssumptions([]);
+      setExperiments([]);
+      setSignals([]);
+      setReadinessReviews([]);
+      setCompanyResourceAccess([]);
       return undefined;
     }
 
@@ -110,6 +123,7 @@ const FounderDashboard: React.FC = () => {
     const unsubExperiments = getExperiments(setExperiments, selectedCompanyId);
     const unsubSignals = getSignals(setSignals, selectedCompanyId);
     const unsubReadiness = getReadinessReviews(setReadinessReviews, selectedCompanyId);
+    const unsubResourceAccess = getActiveCompanyResourceAccess(setCompanyResourceAccess, selectedCompanyId);
 
     return () => {
       unsubInterviews();
@@ -118,6 +132,7 @@ const FounderDashboard: React.FC = () => {
       unsubExperiments();
       unsubSignals();
       unsubReadiness();
+      unsubResourceAccess();
     };
   }, [selectedCompanyId]);
 
@@ -178,6 +193,11 @@ const FounderDashboard: React.FC = () => {
     });
   const selectedApplication = myApplications.find((application) => application.companyId === selectedCompanyId);
   const activeCohort = cohorts.find((cohort) => cohort.status === 'active') || cohorts[0];
+  const latestReadinessReview =
+    selectedInsight?.latestReview ||
+    readinessReviews
+      .slice()
+      .sort((left, right) => new Date(right.reviewedAt).getTime() - new Date(left.reviewedAt).getTime())[0];
   const strongestPattern = useMemo(
     () => summarizePatternWidgets(patterns).strongestPattern,
     [patterns]
@@ -210,7 +230,7 @@ const FounderDashboard: React.FC = () => {
           }
     : null;
 
-  const evidenceLinks = selectedCompany
+  const builderJourneySteps = selectedCompany
     ? [
         {
           label: 'Interview Capture',
@@ -219,7 +239,7 @@ const FounderDashboard: React.FC = () => {
           count: selectedInsight?.countedInterviews || 0,
           detail: `${selectedInsight?.highPainInterviewCount || 0} strong pain signal${selectedInsight?.highPainInterviewCount === 1 ? '' : 's'}`,
           icon: MessageSquare,
-          locked: false,
+          state: (selectedInsight?.countedInterviews || 0) === 0 ? 'current' : 'complete',
         },
         {
           label: 'Patterns & Assumptions',
@@ -228,7 +248,12 @@ const FounderDashboard: React.FC = () => {
           count: (selectedInsight?.strongPatternCount || 0) + (selectedInsight?.assumptionCount || 0),
           detail: `${selectedInsight?.strongPatternCount || 0} pattern${selectedInsight?.strongPatternCount === 1 ? '' : 's'} / ${selectedInsight?.assumptionCount || 0} assumption${selectedInsight?.assumptionCount === 1 ? '' : 's'}`,
           icon: Brain,
-          locked: false,
+          state:
+            (selectedInsight?.countedInterviews || 0) === 0
+              ? 'locked'
+              : !synthesisReady
+                ? 'current'
+                : 'complete',
         },
         {
           label: 'MVP / Test Design',
@@ -239,7 +264,7 @@ const FounderDashboard: React.FC = () => {
           count: selectedInsight?.experimentCount || 0,
           icon: FlaskConical,
           detail: synthesisReady ? `Current direction: ${currentDirectionLabel}` : 'Complete synthesis first',
-          locked: !synthesisReady,
+          state: !synthesisReady ? 'locked' : (selectedInsight?.experimentCount || 0) > 0 ? 'complete' : 'current',
         },
         {
           label: 'Live Test Signals',
@@ -251,10 +276,38 @@ const FounderDashboard: React.FC = () => {
               ? `${selectedInsight.experimentCount} test${selectedInsight.experimentCount === 1 ? '' : 's'} in motion`
               : 'No live tests yet',
           icon: SignalIcon,
-          locked: false,
+          state:
+            (selectedInsight?.experimentCount || 0) === 0
+              ? 'locked'
+              : (selectedInsight?.tractionSignalCount || 0) > 0
+                ? 'complete'
+                : 'current',
         },
       ]
     : [];
+  const resourceView = useMemo(
+    () =>
+      selectedInsight
+        ? buildCompanyResourceView({
+            accessRecords: companyResourceAccess,
+            availableResourceKeys: selectedInsight.availableResources.map((resource) => resource.key),
+            lockedResources: selectedInsight.lockedResources.map((resource) => ({
+              key: resource.key,
+              missingProof: resource.missingProof,
+            })),
+          })
+        : [],
+    [companyResourceAccess, selectedInsight]
+  );
+  const unlockedResources = resourceView.filter(
+    (resource) => resource.founderVisible && resource.accessState === 'unlocked'
+  );
+  const eligibleResources = resourceView.filter(
+    (resource) => resource.founderVisible && resource.accessState === 'eligible'
+  );
+  const lockedResourceView = resourceView.filter(
+    (resource) => resource.founderVisible && resource.accessState === 'locked'
+  );
 
   if (loading) {
     return <div className="p-8 text-sm text-slate-500">Loading builder workspace...</div>;
@@ -336,22 +389,38 @@ const FounderDashboard: React.FC = () => {
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Interviews Counted</p>
               <p className="mt-3 text-3xl font-semibold text-slate-950">{selectedInsight.countedInterviews}</p>
-              <p className="mt-2 text-sm text-slate-500">Builder asks for at least 15, with stronger support closer to 50.</p>
+              <p className="mt-2 text-sm text-slate-500">
+                {selectedInsight.countedInterviews > 0
+                  ? 'Builder asks for at least 15, with stronger support closer to 50.'
+                  : 'No interviews are recorded yet. Builder still starts with discovery before synthesis.'}
+              </p>
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Strong Pain Signals</p>
               <p className="mt-3 text-3xl font-semibold text-slate-950">{selectedInsight.highPainInterviewCount}</p>
-              <p className="mt-2 text-sm text-slate-500">Interviews that surfaced strong customer pain, not polite agreement.</p>
+              <p className="mt-2 text-sm text-slate-500">
+                {selectedInsight.highPainInterviewCount > 0
+                  ? 'Interviews that surfaced strong customer pain, not polite agreement.'
+                  : 'No strong pain signal is confirmed yet. Do not treat polite interest as proof.'}
+              </p>
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Validation Tests</p>
               <p className="mt-3 text-3xl font-semibold text-slate-950">{selectedInsight.experimentCount}</p>
-              <p className="mt-2 text-sm text-slate-500">Builder expects testing beyond discovery before build-heavy support unlocks.</p>
+              <p className="mt-2 text-sm text-slate-500">
+                {selectedInsight.experimentCount > 0
+                  ? 'Builder expects testing beyond discovery before build-heavy support unlocks.'
+                  : 'No validation tests are recorded yet. Build-heavy support should stay locked.'}
+              </p>
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Traction Signals</p>
               <p className="mt-3 text-3xl font-semibold text-slate-950">{selectedInsight.tractionSignalCount}</p>
-              <p className="mt-2 text-sm text-slate-500">Measured signs that validation is becoming real in the market.</p>
+              <p className="mt-2 text-sm text-slate-500">
+                {selectedInsight.tractionSignalCount > 0
+                  ? 'Measured signs that validation is becoming real in the market.'
+                  : 'No traction signals are recorded yet. Sparse seed data should not read as market proof.'}
+              </p>
             </div>
           </section>
 
@@ -372,10 +441,15 @@ const FounderDashboard: React.FC = () => {
                     {selectedInsight.nextMilestone}
                   </p>
                 </div>
-                {selectedInsight.recordedProgressScore !== undefined && (
+                {selectedInsight.recordedProgressScore !== undefined ? (
                   <div className="rounded-2xl bg-slate-50 px-4 py-3 text-right">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recorded Progress</p>
                     <p className="mt-1 text-2xl font-semibold text-slate-950">{selectedInsight.recordedProgressScore}</p>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-right">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recorded Progress</p>
+                    <p className="mt-1 text-sm font-medium text-slate-600">No staff progress record yet.</p>
                   </div>
                 )}
               </div>
@@ -403,8 +477,8 @@ const FounderDashboard: React.FC = () => {
                         </div>
                       ))
                     ) : (
-                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                        Current proof clears the next unlock threshold. Use staff support to move the next decision forward.
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        No blocking proof gap is surfaced in the current record. Confirm interviews, synthesis, and test evidence are actually present before treating this step as cleared.
                       </div>
                     )}
                   </div>
@@ -414,19 +488,47 @@ const FounderDashboard: React.FC = () => {
 
             <div className="space-y-6">
               <div className="rounded-[28px] border border-emerald-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-semibold text-slate-950">Support Available Now</h2>
-                <p className="mt-1 text-sm text-slate-500">Support you have earned from the proof already in the system.</p>
+                <h2 className="text-lg font-semibold text-slate-950">Unlocked Now</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Support currently opened through persistent OM access records. Eligibility alone does not count as unlocked.
+                </p>
                 <div className="mt-5 space-y-3">
-                  {selectedInsight.availableResources.length > 0 ? (
-                    selectedInsight.availableResources.map((resource) => (
+                  {unlockedResources.length > 0 ? (
+                    unlockedResources.map((resource) => (
                       <div key={resource.key} className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
                         <p className="text-sm font-semibold text-emerald-900">{resource.name}</p>
-                        <p className="mt-1 text-sm text-emerald-800/80">{resource.description}</p>
+                        <p className="mt-1 text-sm text-emerald-800/80">{resource.grantedReason || resource.description}</p>
+                        {resource.grantedAt ? (
+                          <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                            Unlocked {new Date(resource.grantedAt).toLocaleDateString()}
+                          </p>
+                        ) : null}
                       </div>
                     ))
                   ) : (
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                      No support pathways are open yet. Keep building the proof listed below.
+                      No support pathways are open yet. Builder evidence may still be early, or staff has not activated access yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-slate-950">Waiting On Staff Activation</h2>
+                <p className="mt-1 text-sm text-slate-500">Support that may be eligible from the current record but is not unlocked yet.</p>
+                <div className="mt-5 space-y-3">
+                  {eligibleResources.length > 0 ? (
+                    eligibleResources.map((resource) => (
+                      <div key={resource.key} className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                        <p className="text-sm font-semibold text-amber-900">{resource.name}</p>
+                        <p className="mt-1 text-sm text-amber-800/80">
+                          Your current proof may justify staff review, but no access record is active yet.
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                      No support pathways are currently waiting on staff activation.
                     </div>
                   )}
                 </div>
@@ -436,12 +538,18 @@ const FounderDashboard: React.FC = () => {
                 <h2 className="text-lg font-semibold text-slate-950">Still Locked</h2>
                 <p className="mt-1 text-sm text-slate-500">What support still waits on more evidence.</p>
                 <div className="mt-5 space-y-3">
-                  {selectedInsight.lockedResources.slice(0, 4).map((resource) => (
-                    <div key={resource.key} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <p className="text-sm font-semibold text-slate-900">{resource.name}</p>
-                      <p className="mt-1 text-sm text-slate-600">{resource.missingProof[0]}</p>
+                  {lockedResourceView.length > 0 ? (
+                    lockedResourceView.slice(0, 4).map((resource) => (
+                      <div key={resource.key} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <p className="text-sm font-semibold text-slate-900">{resource.name}</p>
+                        <p className="mt-1 text-sm text-slate-600">{resource.missingProof[0] || 'More Builder proof is still needed before this support can open.'}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                      No additional locked pathways are configured in the current record yet. That does not replace staff review.
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             </div>
@@ -475,8 +583,8 @@ const FounderDashboard: React.FC = () => {
                 </div>
               </div>
               <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {evidenceLinks.map((item) => (
-                  item.locked ? (
+                {builderJourneySteps.map((item) => (
+                  item.state === 'locked' ? (
                     <div
                       key={item.label}
                       className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 opacity-80"
@@ -503,9 +611,19 @@ const FounderDashboard: React.FC = () => {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <item.icon className="h-5 w-5 text-slate-500" />
-                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 ring-1 ring-slate-200">
-                          {item.count}
-                        </span>
+                        <div className="flex flex-col items-end gap-2">
+                          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 ring-1 ring-slate-200">
+                            {item.count}
+                          </span>
+                          <span
+                            className={cn(
+                              'rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]',
+                              item.state === 'current' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'
+                            )}
+                          >
+                            {item.state}
+                          </span>
+                        </div>
                       </div>
                       <h3 className="mt-4 text-base font-semibold text-slate-950">{item.label}</h3>
                       <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
@@ -523,7 +641,7 @@ const FounderDashboard: React.FC = () => {
             <div className="space-y-6">
               <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-semibold text-slate-950">Readiness Signals</h2>
-                <p className="mt-1 text-sm text-slate-500">Official reviews stay separate from stage and membership.</p>
+                <p className="mt-1 text-sm text-slate-500">Official reviews stay separate from stage and membership. No review means undecided, not ready.</p>
                 <div className="mt-5 space-y-4">
                   {[
                     ReadinessType.BUILDER_COMPLETION,
@@ -550,7 +668,7 @@ const FounderDashboard: React.FC = () => {
                             {reviewType.replace(/_/g, ' ')}
                           </p>
                           <p className="mt-1 text-sm text-slate-500">
-                            {review?.reasons?.[0] || 'No official review captured yet.'}
+                            {review?.reasons?.[0] || 'No official review captured yet. Treat this as undecided.'}
                           </p>
                         </div>
                         {icon}
@@ -561,12 +679,39 @@ const FounderDashboard: React.FC = () => {
               </div>
 
               <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-semibold text-slate-950">Program Status</h2>
-                <p className="mt-1 text-sm text-slate-500">Operational status without confusing it for readiness.</p>
+                <h2 className="text-lg font-semibold text-slate-950">Operational Distinctions</h2>
+                <p className="mt-1 text-sm text-slate-500">Keep membership, venture stage, readiness, unlocks, and investor visibility separate.</p>
                 <div className="mt-5 space-y-4">
                   <div className="rounded-2xl bg-slate-50 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Membership</p>
                     <p className="mt-1 text-sm font-semibold text-slate-950">{selectedCompany.membershipStatus || 'unknown'}</p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Venture stage</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950">{selectedInsight.stageLabel}</p>
+                    <p className="mt-1 text-sm text-slate-500">This is the current Builder phase, not a readiness decision.</p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Readiness</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950">
+                      {latestReadinessReview ? formatDirectionLabel(latestReadinessReview.status) : 'No formal OM review yet'}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">Readiness stays staff-owned until an official review is recorded.</p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Unlock eligibility</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950">
+                      {unlockedResources.length > 0
+                        ? `${unlockedResources.length} support path${unlockedResources.length === 1 ? '' : 's'} unlocked`
+                        : eligibleResources.length > 0
+                          ? `${eligibleResources.length} path${eligibleResources.length === 1 ? '' : 's'} waiting on staff activation`
+                          : 'More Builder proof still needed'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Investor visibility</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950">Not active in this workspace</p>
+                    <p className="mt-1 text-sm text-slate-500">Investor-facing access stays out of this founder view.</p>
                   </div>
                   <div className="rounded-2xl bg-slate-50 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Mentor support</p>
