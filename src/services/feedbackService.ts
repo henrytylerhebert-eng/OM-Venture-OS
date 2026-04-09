@@ -1,7 +1,7 @@
 import { collection, query, onSnapshot, addDoc, QueryConstraint, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { MeetingRequest, Feedback } from '../types';
-import { handleFirestoreError, OperationType } from './baseService';
+import { handleFirestoreError, OperationType, sanitizeData } from './baseService';
 
 // Meeting Requests
 export const getMeetingRequests = (callback: (requests: MeetingRequest[]) => void, constraints: QueryConstraint[] = []) => {
@@ -14,7 +14,7 @@ export const getMeetingRequests = (callback: (requests: MeetingRequest[]) => voi
 
 export const createMeetingRequest = async (request: Omit<MeetingRequest, 'id'>): Promise<void> => {
   try {
-    await addDoc(collection(db, 'meetingRequests'), request);
+    await addDoc(collection(db, 'meetingRequests'), sanitizeData(request));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'meetingRequests');
   }
@@ -31,7 +31,7 @@ export const getFeedback = (callback: (feedback: Feedback[]) => void, companyId:
 
 export const submitFeedback = async (feedback: Omit<Feedback, 'id'>): Promise<void> => {
   try {
-    await addDoc(collection(db, 'feedback'), feedback);
+    await addDoc(collection(db, 'feedback'), sanitizeData(feedback));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'feedback');
   }

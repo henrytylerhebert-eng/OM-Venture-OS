@@ -1,7 +1,7 @@
 import { collection, doc, query, onSnapshot, updateDoc, addDoc, QueryConstraint, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { PortfolioProgress, ReadinessReview } from '../types';
-import { handleFirestoreError, OperationType } from './baseService';
+import { handleFirestoreError, OperationType, sanitizeData } from './baseService';
 
 // Portfolio Progress
 export const getPortfolioProgress = (callback: (progress: PortfolioProgress[]) => void, constraints: QueryConstraint[] = []) => {
@@ -14,7 +14,10 @@ export const getPortfolioProgress = (callback: (progress: PortfolioProgress[]) =
 
 export const updatePortfolioProgress = async (id: string, data: Partial<PortfolioProgress>): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'portfolioProgress', id), { ...data, updatedAt: new Date().toISOString() });
+    await updateDoc(
+      doc(db, 'portfolioProgress', id),
+      sanitizeData({ ...data, updatedAt: new Date().toISOString() })
+    );
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `portfolioProgress/${id}`);
   }
@@ -31,7 +34,7 @@ export const getReadinessReviews = (callback: (reviews: ReadinessReview[]) => vo
 
 export const createReadinessReview = async (review: Omit<ReadinessReview, 'id'>): Promise<void> => {
   try {
-    await addDoc(collection(db, 'readinessReviews'), review);
+    await addDoc(collection(db, 'readinessReviews'), sanitizeData(review));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'readinessReviews');
   }

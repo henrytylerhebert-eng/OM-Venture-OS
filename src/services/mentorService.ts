@@ -1,7 +1,7 @@
 import { collection, doc, getDoc, query, onSnapshot, updateDoc, addDoc, QueryConstraint } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Person, Mentor, MentorAssignment } from '../types';
-import { handleFirestoreError, OperationType } from './baseService';
+import { handleFirestoreError, OperationType, sanitizeData } from './baseService';
 
 // People
 export const getPeople = (callback: (people: Person[]) => void, constraints: QueryConstraint[] = []) => {
@@ -24,7 +24,7 @@ export const getPerson = async (id: string): Promise<Person | null> => {
 
 export const createPerson = async (person: Omit<Person, 'id'>): Promise<string> => {
   try {
-    const docRef = await addDoc(collection(db, 'people'), person);
+    const docRef = await addDoc(collection(db, 'people'), sanitizeData(person));
     return docRef.id;
   } catch (error) {
     return handleFirestoreError(error, OperationType.CREATE, 'people');
@@ -33,7 +33,7 @@ export const createPerson = async (person: Omit<Person, 'id'>): Promise<string> 
 
 export const updatePerson = async (id: string, data: Partial<Person>): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'people', id), data);
+    await updateDoc(doc(db, 'people', id), sanitizeData(data));
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `people/${id}`);
   }
@@ -59,7 +59,7 @@ export const getMentorAssignments = (callback: (assignments: MentorAssignment[])
 
 export const assignMentor = async (assignment: Omit<MentorAssignment, 'id'>): Promise<void> => {
   try {
-    await addDoc(collection(db, 'mentorAssignments'), assignment);
+    await addDoc(collection(db, 'mentorAssignments'), sanitizeData(assignment));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'mentorAssignments');
   }

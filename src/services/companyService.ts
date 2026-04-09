@@ -1,7 +1,7 @@
 import { collection, doc, getDoc, query, onSnapshot, updateDoc, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Company, Organization } from '../types';
-import { handleFirestoreError, OperationType } from './baseService';
+import { handleFirestoreError, OperationType, sanitizeData } from './baseService';
 
 // Organizations
 export const getOrganizations = (callback: (orgs: Organization[]) => void) => {
@@ -14,7 +14,7 @@ export const getOrganizations = (callback: (orgs: Organization[]) => void) => {
 
 export const createOrganization = async (org: Omit<Organization, 'id'>): Promise<string> => {
   try {
-    const docRef = await addDoc(collection(db, 'organizations'), org);
+    const docRef = await addDoc(collection(db, 'organizations'), sanitizeData(org));
     return docRef.id;
   } catch (error) {
     return handleFirestoreError(error, OperationType.CREATE, 'organizations');
@@ -42,7 +42,7 @@ export const getCompany = async (id: string): Promise<Company | null> => {
 
 export const createCompany = async (company: Omit<Company, 'id'>): Promise<string> => {
   try {
-    const docRef = await addDoc(collection(db, 'companies'), company);
+    const docRef = await addDoc(collection(db, 'companies'), sanitizeData(company));
     return docRef.id;
   } catch (error) {
     return handleFirestoreError(error, OperationType.CREATE, 'companies');
@@ -51,7 +51,7 @@ export const createCompany = async (company: Omit<Company, 'id'>): Promise<strin
 
 export const updateCompany = async (id: string, data: Partial<Company>): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'companies', id), data);
+    await updateDoc(doc(db, 'companies', id), sanitizeData(data));
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `companies/${id}`);
   }

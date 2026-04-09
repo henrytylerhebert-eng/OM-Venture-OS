@@ -28,6 +28,24 @@ export interface FirestoreErrorInfo {
   }
 }
 
+export const sanitizeData = <T>(value: T): T => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizeData(item))
+      .filter((item) => item !== undefined) as T;
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entryValue]) => entryValue !== undefined)
+        .map(([key, entryValue]) => [key, sanitizeData(entryValue)])
+    ) as T;
+  }
+
+  return value;
+};
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),

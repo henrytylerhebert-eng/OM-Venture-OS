@@ -1,7 +1,7 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { UserProfile } from '../types';
-import { handleFirestoreError, OperationType } from './baseService';
+import { handleFirestoreError, OperationType, sanitizeData } from './baseService';
 
 export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
   try {
@@ -15,7 +15,7 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
 
 export const createUserProfile = async (profile: UserProfile): Promise<void> => {
   try {
-    await setDoc(doc(db, 'users', profile.uid), profile);
+    await setDoc(doc(db, 'users', profile.uid), sanitizeData(profile));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `users/${profile.uid}`);
   }

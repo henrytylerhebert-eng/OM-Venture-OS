@@ -1,7 +1,7 @@
 import { collection, doc, query, onSnapshot, updateDoc, addDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Interview, Pattern, Assumption, Experiment, Signal, PatternStatus, StageConfidence } from '../types';
-import { handleFirestoreError, OperationType } from './baseService';
+import { handleFirestoreError, OperationType, sanitizeData } from './baseService';
 import {
   normalizePatternRecord,
   preparePatternWritePayload,
@@ -75,7 +75,7 @@ export const getInterviews = (callback: (interviews: Interview[]) => void, compa
 
 export const createInterview = async (interview: Omit<Interview, 'id'>): Promise<void> => {
   try {
-    await addDoc(collection(db, 'interviews'), interview);
+    await addDoc(collection(db, 'interviews'), sanitizeData(interview));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'interviews');
   }
@@ -83,7 +83,7 @@ export const createInterview = async (interview: Omit<Interview, 'id'>): Promise
 
 export const updateInterview = async (id: string, data: Partial<Interview>): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'interviews', id), data);
+    await updateDoc(doc(db, 'interviews', id), sanitizeData(data));
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `interviews/${id}`);
   }
@@ -127,7 +127,7 @@ export const getPatterns = (callback: (patterns: Pattern[]) => void, companyId?:
 
 export const createPattern = async (pattern: Omit<Pattern, 'id'>): Promise<void> => {
   try {
-    await addDoc(collection(db, 'patterns'), preparePatternWritePayload(pattern));
+    await addDoc(collection(db, 'patterns'), sanitizeData(preparePatternWritePayload(pattern)));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'patterns');
   }
@@ -137,7 +137,7 @@ export const updatePattern = async (id: string, data: Partial<Pattern>): Promise
   try {
     await updateDoc(
       doc(db, 'patterns', id),
-      hasRequiredPatternFields(data) ? preparePatternWritePayload(data) : data
+      sanitizeData(hasRequiredPatternFields(data) ? preparePatternWritePayload(data) : data)
     );
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `patterns/${id}`);
@@ -164,7 +164,7 @@ export const getAssumptions = (callback: (assumptions: Assumption[]) => void, co
 
 export const createAssumption = async (assumption: Omit<Assumption, 'id'>): Promise<void> => {
   try {
-    await addDoc(collection(db, 'assumptions'), assumption);
+    await addDoc(collection(db, 'assumptions'), sanitizeData(assumption));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'assumptions');
   }
@@ -172,7 +172,7 @@ export const createAssumption = async (assumption: Omit<Assumption, 'id'>): Prom
 
 export const updateAssumption = async (id: string, data: Partial<Assumption>): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'assumptions', id), data);
+    await updateDoc(doc(db, 'assumptions', id), sanitizeData(data));
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `assumptions/${id}`);
   }
@@ -198,7 +198,7 @@ export const getExperiments = (callback: (experiments: Experiment[]) => void, co
 
 export const createExperiment = async (experiment: Omit<Experiment, 'id'>): Promise<void> => {
   try {
-    await addDoc(collection(db, 'experiments'), experiment);
+    await addDoc(collection(db, 'experiments'), sanitizeData(experiment));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'experiments');
   }
@@ -206,7 +206,7 @@ export const createExperiment = async (experiment: Omit<Experiment, 'id'>): Prom
 
 export const updateExperiment = async (id: string, data: Partial<Experiment>): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'experiments', id), data);
+    await updateDoc(doc(db, 'experiments', id), sanitizeData(data));
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `experiments/${id}`);
   }
@@ -232,7 +232,7 @@ export const getSignals = (callback: (signals: Signal[]) => void, companyId: str
 
 export const createSignal = async (signal: Omit<Signal, 'id'>): Promise<void> => {
   try {
-    await addDoc(collection(db, 'signals'), signal);
+    await addDoc(collection(db, 'signals'), sanitizeData(signal));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'signals');
   }
@@ -240,7 +240,7 @@ export const createSignal = async (signal: Omit<Signal, 'id'>): Promise<void> =>
 
 export const updateSignal = async (id: string, data: Partial<Signal>): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'signals', id), data);
+    await updateDoc(doc(db, 'signals', id), sanitizeData(data));
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `signals/${id}`);
   }

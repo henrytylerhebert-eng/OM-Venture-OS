@@ -27,7 +27,7 @@ import {
   SourceSystem,
   type SourcePayloadValue,
 } from '../types';
-import { handleFirestoreError, OperationType } from './baseService';
+import { handleFirestoreError, OperationType, sanitizeData } from './baseService';
 
 type SourceSubmissionCreateInput = Omit<
   SourceSubmission,
@@ -61,22 +61,6 @@ const stableStringify = (value: SourcePayloadValue | Record<string, SourcePayloa
 };
 
 const buildSourceHash = (payload: Record<string, SourcePayloadValue>) => stableStringify(payload);
-
-const stripUndefined = <T>(value: T): T => {
-  if (Array.isArray(value)) {
-    return value.map((item) => stripUndefined(item)) as T;
-  }
-
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([, entryValue]) => entryValue !== undefined)
-        .map(([key, entryValue]) => [key, stripUndefined(entryValue)])
-    ) as T;
-  }
-
-  return value;
-};
 
 const normalizeName = (value?: string | null) =>
   (value || '')
@@ -348,7 +332,7 @@ const resolveReviewQueueItem = async (
     return;
   }
 
-  await updateDoc(doc(db, 'ingestionReviewQueue', existing.id), stripUndefined({
+    await updateDoc(doc(db, 'ingestionReviewQueue', existing.id), sanitizeData({
     status: IngestionReviewStatus.RESOLVED,
     reviewedByPersonId,
     reviewedAt: new Date().toISOString(),
@@ -409,7 +393,7 @@ export const createSourceSubmission = async (submission: SourceSubmissionCreateI
     });
 
     const { id: _ignoredId, ...writePayload } = payload;
-    const docRef = await addDoc(collection(db, 'sourceSubmissions'), stripUndefined(writePayload));
+    const docRef = await addDoc(collection(db, 'sourceSubmissions'), sanitizeData(writePayload));
     return docRef.id;
   } catch (error) {
     return handleFirestoreError(error, OperationType.CREATE, 'sourceSubmissions');
@@ -427,7 +411,7 @@ export const createIngestionReviewItem = async (reviewItem: IngestionReviewCreat
     });
 
     const { id: _ignoredId, ...writePayload } = payload;
-    const docRef = await addDoc(collection(db, 'ingestionReviewQueue'), stripUndefined(writePayload));
+    const docRef = await addDoc(collection(db, 'ingestionReviewQueue'), sanitizeData(writePayload));
     return docRef.id;
   } catch (error) {
     return handleFirestoreError(error, OperationType.CREATE, 'ingestionReviewQueue');
@@ -531,7 +515,7 @@ export const applySourceSubmissionMatch = async (
   ingestionNotes?: string
 ): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'sourceSubmissions', submissionId), stripUndefined({
+    await updateDoc(doc(db, 'sourceSubmissions', submissionId), sanitizeData({
       matchedCompanyId: matchResult.matchedCompanyId || null,
       matchedPersonId: matchResult.matchedPersonId || null,
       matchConfidence: matchResult.matchConfidence,
@@ -558,7 +542,7 @@ export const flagSourceSubmissionForManualReview = async ({
   reviewedByPersonId?: string;
 }): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'sourceSubmissions', sourceSubmission.id), stripUndefined({
+    await updateDoc(doc(db, 'sourceSubmissions', sourceSubmission.id), sanitizeData({
       matchedCompanyId: matchResult.matchedCompanyId || null,
       matchedPersonId: matchResult.matchedPersonId || null,
       matchConfidence: matchResult.matchConfidence,
@@ -587,7 +571,7 @@ export const flagSourceSubmissionForManualReview = async ({
     };
 
     if (existing) {
-      await updateDoc(doc(db, 'ingestionReviewQueue', existing.id), stripUndefined({
+      await updateDoc(doc(db, 'ingestionReviewQueue', existing.id), sanitizeData({
         status: IngestionReviewStatus.OPEN,
         reviewReason: reviewPayload.reviewReason,
         actionNeeded: reviewPayload.actionNeeded,
@@ -602,7 +586,7 @@ export const flagSourceSubmissionForManualReview = async ({
       }));
     } else {
       const { createdAt, updatedAt, ...newReview } = reviewPayload;
-      await addDoc(collection(db, 'ingestionReviewQueue'), stripUndefined({
+      await addDoc(collection(db, 'ingestionReviewQueue'), sanitizeData({
         ...newReview,
         createdAt,
         updatedAt,
@@ -619,7 +603,7 @@ export const markSourceSubmissionAsReadyToNormalize = async (
   staffNotes?: string
 ): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'sourceSubmissions', sourceSubmission.id), stripUndefined({
+    await updateDoc(doc(db, 'sourceSubmissions', sourceSubmission.id), sanitizeData({
       ingestionStatus: SourceIngestionStatus.READY_TO_NORMALIZE,
       ingestionNotes: appendIngestionNotes(sourceSubmission.ingestionNotes, staffNotes),
       matchedByPersonId: reviewedByPersonId || sourceSubmission.matchedByPersonId || null,
@@ -645,7 +629,7 @@ export const markSourceSubmissionAsNormalized = async (
   staffNotes?: string
 ): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'sourceSubmissions', sourceSubmission.id), stripUndefined({
+    await updateDoc(doc(db, 'sourceSubmissions', sourceSubmission.id), sanitizeData({
       ingestionStatus: SourceIngestionStatus.NORMALIZED,
       normalizedTargets,
       normalizedAt: new Date().toISOString(),
@@ -696,7 +680,7 @@ export const markSourceSubmissionAsIgnored = async (
   staffNotes?: string
 ): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'sourceSubmissions', sourceSubmission.id), stripUndefined({
+    await updateDoc(doc(db, 'sourceSubmissions', sourceSubmission.id), sanitizeData({
       ingestionStatus: SourceIngestionStatus.IGNORED,
       ingestionNotes: appendIngestionNotes(sourceSubmission.ingestionNotes, staffNotes),
       updatedAt: new Date().toISOString(),

@@ -1,7 +1,7 @@
 import { collection, doc, query, onSnapshot, updateDoc, addDoc, QueryConstraint } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Cohort, CohortApplication, CohortParticipation, DecisionStatus, ParticipationStatus } from '../types';
-import { handleFirestoreError, OperationType } from './baseService';
+import { handleFirestoreError, OperationType, sanitizeData } from './baseService';
 
 // Cohorts
 export const getCohorts = (callback: (cohorts: Cohort[]) => void) => {
@@ -23,7 +23,7 @@ export const getApplications = (callback: (apps: CohortApplication[]) => void, c
 
 export const submitApplication = async (app: Omit<CohortApplication, 'id'>): Promise<void> => {
   try {
-    await addDoc(collection(db, 'cohortApplications'), app);
+    await addDoc(collection(db, 'cohortApplications'), sanitizeData(app));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'cohortApplications');
   }
@@ -31,12 +31,15 @@ export const submitApplication = async (app: Omit<CohortApplication, 'id'>): Pro
 
 export const updateApplicationStatus = async (id: string, decision: DecisionStatus, decidedByPersonId?: string): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'cohortApplications', id), { 
-      decision, 
-      decidedByPersonId,
-      decidedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString() 
-    });
+    await updateDoc(
+      doc(db, 'cohortApplications', id),
+      sanitizeData({
+        decision,
+        decidedByPersonId,
+        decidedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+    );
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `cohortApplications/${id}`);
   }
@@ -61,7 +64,7 @@ export const approveCohortApplication = async (app: CohortApplication, decidedBy
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    await addDoc(collection(db, 'cohortParticipations'), participation);
+    await addDoc(collection(db, 'cohortParticipations'), sanitizeData(participation));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'cohortParticipations');
   }
