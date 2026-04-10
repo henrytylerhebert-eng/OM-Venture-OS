@@ -133,6 +133,7 @@ service cloud.firestore {
         data.normalizedTargets is list &&
         data.createdAt is string &&
         data.updatedAt is string &&
+        (!(data.sourceImportPath != null) || data.sourceImportPath is string) &&
         (!(data.sourceSubmittedAt != null) || data.sourceSubmittedAt is string) &&
         (!(data.sourceUpdatedAt != null) || data.sourceUpdatedAt is string) &&
         (!(data.sourceSubmitterName != null) || data.sourceSubmitterName is string) &&

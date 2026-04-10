@@ -263,6 +263,7 @@ export const getBuilderFoundationCompletion = (foundation: BuilderFoundation | n
 
   const interviewGuideComplete =
     foundation.interviewGuide.primaryLearningGoal.trim().length > 0 &&
+    foundation.interviewGuide.assumptionIds.length > 0 &&
     foundation.interviewGuide.openingQuestions.length > 0 &&
     foundation.interviewGuide.problemQuestions.length > 0 &&
     foundation.interviewGuide.currentBehaviorQuestions.length > 0 &&

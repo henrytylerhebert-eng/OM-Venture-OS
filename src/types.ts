@@ -543,6 +543,7 @@ export interface SourceSubmission {
   id: string;
   sourceSystem: SourceSystem;
   sourceLane: SourceSubmissionLane;
+  sourceImportPath?: string;
   sourceFormId: string;
   sourceFormTitle: string;
   sourceSubmissionId: string;

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { buildSourceIntakeReviewRows, summarizeSourceIntakeReviewRows } from '../src/lib/sourceIntakeInsights';
-import { matchSourceSubmissionCandidates } from '../src/services/sourceIngestionService';
+import {
+  buildSourceSubmissionDocumentId,
+  matchSourceSubmissionCandidates,
+  prepareSourceSubmissionWrite,
+} from '../src/services/sourceIngestionService';
 import {
   Company,
   IngestionReviewItem,
@@ -88,6 +92,54 @@ assert.equal(exactMatchResult.ingestionStatus, SourceIngestionStatus.READY_TO_NO
 assert.equal(exactMatchResult.matchConfidence, SourceMatchConfidence.HIGH);
 assert.equal(exactMatchResult.matchedCompanyId, 'company-1');
 assert.equal(exactMatchResult.matchedPersonId, 'person-1');
+
+const deterministicDocId = buildSourceSubmissionDocumentId(SourceSystem.JOTFORM, 'form-1', 'submission-1');
+assert.equal(deterministicDocId, 'jotform__form-1__submission-1');
+
+const preservedReviewState = prepareSourceSubmissionWrite({
+  submission: {
+    sourceSystem: SourceSystem.JOTFORM,
+    sourceLane: SourceSubmissionLane.MEETING_NOTES,
+    sourceImportPath: 'jotform_raw_intake',
+    sourceFormId: 'form-1',
+    sourceFormTitle: 'Builder Notes - Template',
+    sourceSubmissionId: 'submission-1',
+    sourceSubmittedAt: now,
+    sourceSubmitterName: 'Taylor Founder',
+    sourceSubmitterEmail: 'taylor@acmehealth.com',
+    sourceCompanyText: 'Acme Health',
+    sourceFounderText: 'Taylor Founder',
+    sourceMeetingDate: now,
+    sourceTopicText: 'Customer discovery debrief',
+    rawPayload: {
+      meetingTopic: 'Updated notes',
+      meetingNotes: 'Updated notes body',
+      company: 'Acme Health',
+    },
+  },
+  existing: makeSubmission({
+    id: 'existing-source-doc',
+    sourceSystem: SourceSystem.JOTFORM,
+    sourceLane: SourceSubmissionLane.MEETING_NOTES,
+    sourceFormId: 'form-1',
+    sourceFormTitle: 'Builder Notes - Template',
+    sourceSubmissionId: 'submission-1',
+    sourceHash: 'older-hash',
+    matchConfidence: SourceMatchConfidence.HIGH,
+    ingestionStatus: SourceIngestionStatus.READY_TO_NORMALIZE,
+    matchedCompanyId: 'company-1',
+    matchedPersonId: 'person-1',
+    ingestionNotes: 'Staff reviewed already.',
+    normalizedTargets: [],
+  }),
+  now,
+});
+assert.equal(preservedReviewState.id, 'jotform__form-1__submission-1');
+assert.equal(preservedReviewState.sourceImportPath, 'jotform_raw_intake');
+assert.equal(preservedReviewState.ingestionStatus, SourceIngestionStatus.READY_TO_NORMALIZE);
+assert.equal(preservedReviewState.matchConfidence, SourceMatchConfidence.HIGH);
+assert.equal(preservedReviewState.matchedCompanyId, 'company-1');
+assert.equal(preservedReviewState.matchedPersonId, 'person-1');
 
 const unresolvedResult = matchSourceSubmissionCandidates(
   makeSubmission({

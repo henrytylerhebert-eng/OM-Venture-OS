@@ -1,11 +1,12 @@
 import {
   QueryConstraint,
-  addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   query,
+  setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore';
@@ -39,7 +40,15 @@ type SourceSubmissionCreateInput = Omit<
   ingestionStatus?: SourceIngestionStatus;
 };
 
+export type JotformRawSourceSubmissionInput = Omit<
+  SourceSubmissionCreateInput,
+  'sourceSystem' | 'matchConfidence' | 'ingestionStatus' | 'normalizedTargets' | 'matchedCompanyId' | 'matchedPersonId'
+>;
+
 type IngestionReviewCreateInput = Omit<IngestionReviewItem, 'id' | 'createdAt' | 'updatedAt'>;
+
+const DEFAULT_JOTFORM_RAW_IMPORT_PATH = 'jotform_raw_intake';
+const DEFAULT_AIRTABLE_RAW_IMPORT_PATH = 'airtable_raw_import';
 
 const stableStringify = (value: SourcePayloadValue | Record<string, SourcePayloadValue>): string => {
   if (value === null) {
@@ -61,6 +70,17 @@ const stableStringify = (value: SourcePayloadValue | Record<string, SourcePayloa
 };
 
 const buildSourceHash = (payload: Record<string, SourcePayloadValue>) => stableStringify(payload);
+
+const encodeDocIdPart = (value: string) => encodeURIComponent(value.trim());
+
+export const buildSourceSubmissionDocumentId = (
+  sourceSystem: SourceSystem,
+  sourceFormId: string,
+  sourceSubmissionId: string
+) => `${sourceSystem}__${encodeDocIdPart(sourceFormId)}__${encodeDocIdPart(sourceSubmissionId)}`;
+
+const defaultImportPathForSourceSystem = (sourceSystem: SourceSystem) =>
+  sourceSystem === SourceSystem.JOTFORM ? DEFAULT_JOTFORM_RAW_IMPORT_PATH : DEFAULT_AIRTABLE_RAW_IMPORT_PATH;
 
 const normalizeName = (value?: string | null) =>
   (value || '')
@@ -232,6 +252,7 @@ const normalizeSourceSubmission = (
     data.sourceLane === SourceSubmissionLane.DISCOVERY_PLAN
       ? SourceSubmissionLane.DISCOVERY_PLAN
       : SourceSubmissionLane.MEETING_NOTES,
+  sourceImportPath: typeof data.sourceImportPath === 'string' ? data.sourceImportPath : undefined,
   sourceFormId: typeof data.sourceFormId === 'string' ? data.sourceFormId : '',
   sourceFormTitle: typeof data.sourceFormTitle === 'string' ? data.sourceFormTitle : '',
   sourceSubmissionId: typeof data.sourceSubmissionId === 'string' ? data.sourceSubmissionId : '',
@@ -275,6 +296,42 @@ const normalizeSourceSubmission = (
   updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : typeof data.createdAt === 'string' ? data.createdAt : '',
 });
 
+export const prepareSourceSubmissionWrite = ({
+  submission,
+  existing,
+  now = new Date().toISOString(),
+}: {
+  submission: SourceSubmissionCreateInput;
+  existing?: SourceSubmission | null;
+  now?: string;
+}): SourceSubmission => {
+  const rawPayload = submission.rawPayload || existing?.rawPayload || {};
+  const sourceSystem = submission.sourceSystem || existing?.sourceSystem || SourceSystem.JOTFORM;
+  const sourceFormId = submission.sourceFormId || existing?.sourceFormId || '';
+  const sourceSubmissionId = submission.sourceSubmissionId || existing?.sourceSubmissionId || '';
+  const sourceHash = submission.sourceHash || buildSourceHash(rawPayload);
+
+  return normalizeSourceSubmission({
+    ...existing,
+    ...submission,
+    id: buildSourceSubmissionDocumentId(sourceSystem, sourceFormId, sourceSubmissionId),
+    sourceSystem,
+    sourceFormId,
+    sourceSubmissionId,
+    rawPayload,
+    sourceHash,
+    sourceImportPath:
+      submission.sourceImportPath || existing?.sourceImportPath || defaultImportPathForSourceSystem(sourceSystem),
+    matchConfidence:
+      submission.matchConfidence ?? existing?.matchConfidence ?? SourceMatchConfidence.UNRESOLVED,
+    ingestionStatus:
+      submission.ingestionStatus ?? existing?.ingestionStatus ?? SourceIngestionStatus.RECEIVED,
+    normalizedTargets: submission.normalizedTargets ?? existing?.normalizedTargets ?? [],
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  });
+};
+
 const normalizeReviewItem = (
   data: Partial<IngestionReviewItem> & { id: string }
 ): IngestionReviewItem => ({
@@ -305,6 +362,11 @@ const normalizeReviewItem = (
 });
 
 const getExistingReviewItem = async (sourceSubmissionId: string) => {
+  const deterministicDoc = await getDoc(doc(db, 'ingestionReviewQueue', sourceSubmissionId));
+  if (deterministicDoc.exists()) {
+    return normalizeReviewItem({ id: deterministicDoc.id, ...deterministicDoc.data() } as IngestionReviewItem);
+  }
+
   const snapshot = await getDocs(
     query(collection(db, 'ingestionReviewQueue'), where('sourceSubmissionId', '==', sourceSubmissionId))
   );
@@ -378,41 +440,53 @@ export const getIngestionReviewQueue = (
 
 export const createSourceSubmission = async (submission: SourceSubmissionCreateInput): Promise<string> => {
   try {
-    const now = new Date().toISOString();
-    const rawPayload = submission.rawPayload || {};
-    const payload = normalizeSourceSubmission({
-      id: 'pending',
-      ...submission,
-      rawPayload,
-      sourceHash: submission.sourceHash || buildSourceHash(rawPayload),
-      matchConfidence: submission.matchConfidence || SourceMatchConfidence.UNRESOLVED,
-      ingestionStatus: submission.ingestionStatus || SourceIngestionStatus.RECEIVED,
-      normalizedTargets: submission.normalizedTargets || [],
-      createdAt: now,
-      updatedAt: now,
-    });
+    const docId = buildSourceSubmissionDocumentId(
+      submission.sourceSystem || SourceSystem.JOTFORM,
+      submission.sourceFormId,
+      submission.sourceSubmissionId
+    );
+    const docRef = doc(db, 'sourceSubmissions', docId);
+    const snapshot = await getDoc(docRef);
+    const existing = snapshot.exists()
+      ? normalizeSourceSubmission({ id: snapshot.id, ...(snapshot.data() as Partial<SourceSubmission>) })
+      : null;
+    const payload = prepareSourceSubmissionWrite({ submission, existing });
 
     const { id: _ignoredId, ...writePayload } = payload;
-    const docRef = await addDoc(collection(db, 'sourceSubmissions'), sanitizeData(writePayload));
-    return docRef.id;
+    await setDoc(docRef, sanitizeData(writePayload));
+    return docId;
   } catch (error) {
     return handleFirestoreError(error, OperationType.CREATE, 'sourceSubmissions');
   }
 };
 
+export const createJotformRawSourceSubmission = async (
+  submission: JotformRawSourceSubmissionInput
+): Promise<string> =>
+  createSourceSubmission({
+    ...submission,
+    sourceSystem: SourceSystem.JOTFORM,
+    sourceImportPath: submission.sourceImportPath || DEFAULT_JOTFORM_RAW_IMPORT_PATH,
+    matchConfidence: SourceMatchConfidence.UNRESOLVED,
+    ingestionStatus: SourceIngestionStatus.RECEIVED,
+    normalizedTargets: [],
+  });
+
 export const createIngestionReviewItem = async (reviewItem: IngestionReviewCreateInput): Promise<string> => {
   try {
     const now = new Date().toISOString();
+    const existing = await getExistingReviewItem(reviewItem.sourceSubmissionId);
     const payload = normalizeReviewItem({
-      id: 'pending',
+      id: existing?.id || reviewItem.sourceSubmissionId,
+      ...existing,
       ...reviewItem,
-      createdAt: now,
+      createdAt: existing?.createdAt || now,
       updatedAt: now,
     });
 
-    const { id: _ignoredId, ...writePayload } = payload;
-    const docRef = await addDoc(collection(db, 'ingestionReviewQueue'), sanitizeData(writePayload));
-    return docRef.id;
+    const { id: reviewDocId, ...writePayload } = payload;
+    await setDoc(doc(db, 'ingestionReviewQueue', reviewDocId), sanitizeData(writePayload));
+    return reviewDocId;
   } catch (error) {
     return handleFirestoreError(error, OperationType.CREATE, 'ingestionReviewQueue');
   }
@@ -570,28 +644,22 @@ export const flagSourceSubmissionForManualReview = async ({
       updatedAt: new Date().toISOString(),
     };
 
-    if (existing) {
-      await updateDoc(doc(db, 'ingestionReviewQueue', existing.id), sanitizeData({
-        status: IngestionReviewStatus.OPEN,
-        reviewReason: reviewPayload.reviewReason,
-        actionNeeded: reviewPayload.actionNeeded,
-        proposedCompanyId: reviewPayload.proposedCompanyId || null,
-        proposedPersonId: reviewPayload.proposedPersonId || null,
-        proposedConfidence: reviewPayload.proposedConfidence,
-        reviewedByPersonId: reviewPayload.reviewedByPersonId || null,
-        reviewedAt: reviewPayload.reviewedAt || null,
-        resolutionType: null,
-        resolutionNotes: null,
-        updatedAt: reviewPayload.updatedAt,
-      }));
-    } else {
-      const { createdAt, updatedAt, ...newReview } = reviewPayload;
-      await addDoc(collection(db, 'ingestionReviewQueue'), sanitizeData({
-        ...newReview,
-        createdAt,
-        updatedAt,
-      }));
-    }
+    const reviewDocId = existing?.id || sourceSubmission.id;
+    await setDoc(doc(db, 'ingestionReviewQueue', reviewDocId), sanitizeData({
+      sourceSubmissionId: reviewPayload.sourceSubmissionId,
+      status: IngestionReviewStatus.OPEN,
+      reviewReason: reviewPayload.reviewReason,
+      actionNeeded: reviewPayload.actionNeeded,
+      proposedCompanyId: reviewPayload.proposedCompanyId || null,
+      proposedPersonId: reviewPayload.proposedPersonId || null,
+      proposedConfidence: reviewPayload.proposedConfidence,
+      reviewedByPersonId: reviewPayload.reviewedByPersonId || null,
+      reviewedAt: reviewPayload.reviewedAt || null,
+      resolutionType: null,
+      resolutionNotes: null,
+      createdAt: existing?.createdAt || reviewPayload.createdAt,
+      updatedAt: reviewPayload.updatedAt,
+    }));
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `sourceSubmissions/${sourceSubmission.id}`);
   }

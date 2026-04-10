@@ -369,6 +369,7 @@
       "properties": {
         "sourceSystem": { "type": "string", "enum": ["jotform", "airtable"] },
         "sourceLane": { "type": "string", "enum": ["discovery_plan", "meeting_notes"] },
+        "sourceImportPath": { "type": "string" },
         "sourceFormId": { "type": "string" },
         "sourceFormTitle": { "type": "string" },
         "sourceSubmissionId": { "type": "string" },
