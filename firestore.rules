@@ -252,6 +252,24 @@ service cloud.firestore {
         data.earlyAdopter.whyThisGroupFirst is string &&
         data.earlyAdopter.reachChannels is list &&
         data.earlyAdopter.excludedSegments is list &&
+        data.interviewGuide is map &&
+        data.interviewGuide.targetSegment is string &&
+        data.interviewGuide.primaryLearningGoal is string &&
+        data.interviewGuide.assumptionIds is list &&
+        data.interviewGuide.openingQuestions is list &&
+        data.interviewGuide.problemQuestions is list &&
+        data.interviewGuide.currentBehaviorQuestions is list &&
+        data.interviewGuide.alternativeQuestions is list &&
+        data.interviewGuide.closingQuestions is list &&
+        data.interviewGuide.successSignalsToListenFor is list &&
+        data.outreachTracker is map &&
+        data.outreachTracker.outreachGoal is string &&
+        data.outreachTracker.targetCount is number &&
+        data.outreachTracker.targetCount >= 1 &&
+        data.outreachTracker.sourcingChannels is list &&
+        data.outreachTracker.messageHook is string &&
+        data.outreachTracker.followUpWindow is string &&
+        data.outreachTracker.targets is list &&
         data.createdAt is string &&
         data.updatedAt is string &&
         (!(data.updatedByPersonId != null) || data.updatedByPersonId is string);

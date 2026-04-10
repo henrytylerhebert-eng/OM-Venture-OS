@@ -60,7 +60,7 @@
     },
     "builderFoundation": {
       "title": "Builder Foundation",
-      "description": "Front-of-Builder founder inputs that shape the problem, Lean Canvas, and primary early adopter before interviews begin.",
+      "description": "Front-of-Builder founder inputs that shape the problem, Lean Canvas, early adopter, interview guide, and outreach plan before interviews begin.",
       "type": "object",
       "properties": {
         "companyId": { "type": "string" },
@@ -133,11 +133,61 @@
             "excludedSegments"
           ]
         },
+        "interviewGuide": {
+          "type": "object",
+          "properties": {
+            "targetSegment": { "type": "string" },
+            "primaryLearningGoal": { "type": "string" },
+            "assumptionIds": { "type": "array", "items": { "type": "string" } },
+            "openingQuestions": { "type": "array", "items": { "type": "string" } },
+            "problemQuestions": { "type": "array", "items": { "type": "string" } },
+            "currentBehaviorQuestions": { "type": "array", "items": { "type": "string" } },
+            "alternativeQuestions": { "type": "array", "items": { "type": "string" } },
+            "closingQuestions": { "type": "array", "items": { "type": "string" } },
+            "successSignalsToListenFor": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": [
+            "targetSegment",
+            "primaryLearningGoal",
+            "assumptionIds",
+            "openingQuestions",
+            "problemQuestions",
+            "currentBehaviorQuestions",
+            "alternativeQuestions",
+            "closingQuestions",
+            "successSignalsToListenFor"
+          ]
+        },
+        "outreachTracker": {
+          "type": "object",
+          "properties": {
+            "outreachGoal": { "type": "string" },
+            "targetCount": { "type": "number" },
+            "sourcingChannels": { "type": "array", "items": { "type": "string" } },
+            "messageHook": { "type": "string" },
+            "followUpWindow": { "type": "string" },
+            "targets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": { "type": "string" },
+                  "roleOrCompany": { "type": "string" },
+                  "outreachChannel": { "type": "string" },
+                  "status": { "type": "string", "enum": ["to_contact", "contacted", "replied", "scheduled"] },
+                  "notes": { "type": "string" }
+                },
+                "required": ["label", "roleOrCompany", "outreachChannel", "status", "notes"]
+              }
+            }
+          },
+          "required": ["outreachGoal", "targetCount", "sourcingChannels", "messageHook", "followUpWindow", "targets"]
+        },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" },
         "updatedByPersonId": { "type": "string" }
       },
-      "required": ["companyId", "ideaToProblem", "leanCanvas", "earlyAdopter", "createdAt", "updatedAt"]
+      "required": ["companyId", "ideaToProblem", "leanCanvas", "earlyAdopter", "interviewGuide", "outreachTracker", "createdAt", "updatedAt"]
     },
     "cohort": {
       "title": "Cohort",
@@ -727,7 +777,7 @@
     "/organizations/{orgId}": { "schema": "organization", "description": "Organizations in the ecosystem." },
     "/people/{personId}": { "schema": "person", "description": "People in the system." },
     "/companies/{companyId}": { "schema": "company", "description": "Startup company records." },
-    "/builderFoundations/{companyId}": { "schema": "builderFoundation", "description": "Founder-owned Builder input layer for problem clarity, Lean Canvas, and early adopter definition." },
+    "/builderFoundations/{companyId}": { "schema": "builderFoundation", "description": "Founder-owned Builder input layer for problem clarity, Lean Canvas, early adopter definition, interview guide setup, and outreach planning." },
     "/cohorts/{cohortId}": { "schema": "cohort", "description": "Available cohort programs." },
     "/cohortApplications/{applicationId}": { "schema": "cohortApplication", "description": "Applications for cohorts." },
     "/cohortParticipations/{participationId}": { "schema": "cohortParticipation", "description": "Active cohort memberships." },

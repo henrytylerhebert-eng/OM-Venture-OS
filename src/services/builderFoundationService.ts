@@ -4,7 +4,9 @@ import {
   type BuilderFoundation,
   type BuilderIdeaToProblem,
   type EarlyAdopterProfile,
+  type BuilderInterviewGuide,
   type LeanCanvasDraft,
+  type BuilderOutreachTracker,
 } from '../types';
 import { createEmptyBuilderFoundation, normalizeBuilderFoundation } from '../lib/builderFoundation';
 import { handleFirestoreError, OperationType, sanitizeData } from './baseService';
@@ -14,6 +16,8 @@ type BuilderFoundationPatch = {
   ideaToProblem?: Partial<BuilderIdeaToProblem>;
   leanCanvas?: Partial<LeanCanvasDraft>;
   earlyAdopter?: Partial<EarlyAdopterProfile>;
+  interviewGuide?: Partial<BuilderInterviewGuide>;
+  outreachTracker?: Partial<BuilderOutreachTracker>;
   updatedByPersonId?: string;
 };
 
@@ -22,6 +26,8 @@ const toWritePayload = (foundation: BuilderFoundation): BuilderFoundationWritePa
   ideaToProblem: foundation.ideaToProblem,
   leanCanvas: foundation.leanCanvas,
   earlyAdopter: foundation.earlyAdopter,
+  interviewGuide: foundation.interviewGuide,
+  outreachTracker: foundation.outreachTracker,
   createdAt: foundation.createdAt,
   updatedAt: foundation.updatedAt,
   updatedByPersonId: foundation.updatedByPersonId,
@@ -69,6 +75,14 @@ export const upsertBuilderFoundation = async (
       earlyAdopter: {
         ...existing.earlyAdopter,
         ...patch.earlyAdopter,
+      },
+      interviewGuide: {
+        ...existing.interviewGuide,
+        ...patch.interviewGuide,
+      },
+      outreachTracker: {
+        ...existing.outreachTracker,
+        ...patch.outreachTracker,
       },
       updatedAt: new Date().toISOString(),
       updatedByPersonId,

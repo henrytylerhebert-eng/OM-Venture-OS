@@ -1,11 +1,13 @@
 import React from 'react';
 import {
   Brain,
+  FileText,
   FlaskConical,
   LayoutTemplate,
   LayoutDashboard,
   Lightbulb,
   MessageSquare,
+  Send,
   Signal as SignalIcon,
   Sparkles,
   Target,
@@ -55,8 +57,26 @@ const sections: ShellNavSection[] = [
     ],
   },
   {
-    heading: 'Evidence',
+    heading: 'Discovery Spine',
     items: [
+      {
+        label: 'Assumption Mapper',
+        path: '/founder/assumptions',
+        icon: Lightbulb,
+        description: 'Name the risky beliefs that still need proof before you write discovery questions or design tests.',
+      },
+      {
+        label: 'Interview Guide',
+        path: '/founder/interview-guide',
+        icon: FileText,
+        description: 'Turn your early risks into a clean customer conversation guide before you start logging interviews.',
+      },
+      {
+        label: 'Outreach Tracker',
+        path: '/founder/outreach',
+        icon: Send,
+        description: 'Track who you want to reach, how you will reach them, and which conversations are still not booked.',
+      },
       {
         label: 'Interviews',
         path: '/founder/discovery',
@@ -68,12 +88,6 @@ const sections: ShellNavSection[] = [
         path: '/founder/patterns',
         icon: Brain,
         description: 'Turn interviews into repeated truth, ranked risk, and a persevere, narrow, or pivot decision before you design an MVP or test.',
-      },
-      {
-        label: 'Assumption Stack',
-        path: '/founder/assumptions',
-        icon: Lightbulb,
-        description: 'Drill into the weakest risks still needing proof so your next test is grounded in evidence.',
       },
       {
         label: 'MVP / Test Design',
@@ -96,7 +110,7 @@ const FounderLayout: React.FC = () => (
     tone="founder"
     eyebrow="Builder Workspace"
     title="Build proof before asking for more."
-    summary="This workspace should guide founders through Builder as a staged operating system: problem clarity, Lean Canvas, early adopter focus, interview capture, synthesis, MVP or test design, live testing, readiness, and earned support."
+    summary="This workspace should guide founders through Builder as a staged operating system: problem clarity, Lean Canvas, early adopter focus, risky assumptions, interview setup, outreach, interview capture, synthesis, MVP or test design, live testing, readiness, and earned support."
     sections={sections}
   />
 );

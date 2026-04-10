@@ -1,8 +1,12 @@
 import {
   type BuilderFoundation,
   type BuilderIdeaToProblem,
+  type BuilderInterviewGuide,
+  type BuilderOutreachTarget,
+  type BuilderOutreachTracker,
   type EarlyAdopterProfile,
   type LeanCanvasDraft,
+  OutreachTargetStatus,
 } from '../types';
 
 const emptyIdeaToProblem = (): BuilderIdeaToProblem => ({
@@ -38,6 +42,46 @@ const emptyEarlyAdopter = (): EarlyAdopterProfile => ({
   excludedSegments: [],
 });
 
+const emptyInterviewGuide = (): BuilderInterviewGuide => ({
+  targetSegment: '',
+  primaryLearningGoal: '',
+  assumptionIds: [],
+  openingQuestions: [],
+  problemQuestions: [],
+  currentBehaviorQuestions: [],
+  alternativeQuestions: [],
+  closingQuestions: [],
+  successSignalsToListenFor: [],
+});
+
+const normalizeOutreachTargets = (value: unknown): BuilderOutreachTarget[] =>
+  Array.isArray(value)
+    ? value
+        .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+        .map((entry) => ({
+          label: typeof entry.label === 'string' ? entry.label.trim() : '',
+          roleOrCompany: typeof entry.roleOrCompany === 'string' ? entry.roleOrCompany.trim() : '',
+          outreachChannel: typeof entry.outreachChannel === 'string' ? entry.outreachChannel.trim() : '',
+          status:
+            entry.status === OutreachTargetStatus.CONTACTED ||
+            entry.status === OutreachTargetStatus.REPLIED ||
+            entry.status === OutreachTargetStatus.SCHEDULED
+              ? entry.status
+              : OutreachTargetStatus.TO_CONTACT,
+          notes: typeof entry.notes === 'string' ? entry.notes.trim() : '',
+        }))
+        .filter((entry) => entry.label || entry.roleOrCompany || entry.notes)
+    : [];
+
+const emptyOutreachTracker = (): BuilderOutreachTracker => ({
+  outreachGoal: '',
+  targetCount: 10,
+  sourcingChannels: [],
+  messageHook: '',
+  followUpWindow: '',
+  targets: [],
+});
+
 export const createEmptyBuilderFoundation = (companyId: string): BuilderFoundation => {
   const now = new Date().toISOString();
 
@@ -47,6 +91,8 @@ export const createEmptyBuilderFoundation = (companyId: string): BuilderFoundati
     ideaToProblem: emptyIdeaToProblem(),
     leanCanvas: emptyLeanCanvas(),
     earlyAdopter: emptyEarlyAdopter(),
+    interviewGuide: emptyInterviewGuide(),
+    outreachTracker: emptyOutreachTracker(),
     createdAt: now,
     updatedAt: now,
   };
@@ -120,6 +166,43 @@ export const normalizeBuilderFoundation = (
       reachChannels: normalizeStringArray(foundation.earlyAdopter?.reachChannels),
       excludedSegments: normalizeStringArray(foundation.earlyAdopter?.excludedSegments),
     },
+    interviewGuide: {
+      targetSegment:
+        typeof foundation.interviewGuide?.targetSegment === 'string'
+          ? foundation.interviewGuide.targetSegment.trim()
+          : '',
+      primaryLearningGoal:
+        typeof foundation.interviewGuide?.primaryLearningGoal === 'string'
+          ? foundation.interviewGuide.primaryLearningGoal.trim()
+          : '',
+      assumptionIds: normalizeStringArray(foundation.interviewGuide?.assumptionIds),
+      openingQuestions: normalizeStringArray(foundation.interviewGuide?.openingQuestions),
+      problemQuestions: normalizeStringArray(foundation.interviewGuide?.problemQuestions),
+      currentBehaviorQuestions: normalizeStringArray(foundation.interviewGuide?.currentBehaviorQuestions),
+      alternativeQuestions: normalizeStringArray(foundation.interviewGuide?.alternativeQuestions),
+      closingQuestions: normalizeStringArray(foundation.interviewGuide?.closingQuestions),
+      successSignalsToListenFor: normalizeStringArray(foundation.interviewGuide?.successSignalsToListenFor),
+    },
+    outreachTracker: {
+      outreachGoal:
+        typeof foundation.outreachTracker?.outreachGoal === 'string'
+          ? foundation.outreachTracker.outreachGoal.trim()
+          : '',
+      targetCount:
+        typeof foundation.outreachTracker?.targetCount === 'number' && Number.isFinite(foundation.outreachTracker.targetCount)
+          ? foundation.outreachTracker.targetCount
+          : 10,
+      sourcingChannels: normalizeStringArray(foundation.outreachTracker?.sourcingChannels),
+      messageHook:
+        typeof foundation.outreachTracker?.messageHook === 'string'
+          ? foundation.outreachTracker.messageHook.trim()
+          : '',
+      followUpWindow:
+        typeof foundation.outreachTracker?.followUpWindow === 'string'
+          ? foundation.outreachTracker.followUpWindow.trim()
+          : '',
+      targets: normalizeOutreachTargets(foundation.outreachTracker?.targets),
+    },
     createdAt: typeof foundation.createdAt === 'string' ? foundation.createdAt : base.createdAt,
     updatedAt: typeof foundation.updatedAt === 'string' ? foundation.updatedAt : base.updatedAt,
     updatedByPersonId:
@@ -141,7 +224,9 @@ export interface BuilderFoundationCompletion {
   ideaToProblemComplete: boolean;
   leanCanvasComplete: boolean;
   earlyAdopterComplete: boolean;
-  interviewReady: boolean;
+  interviewGuideComplete: boolean;
+  outreachTrackerComplete: boolean;
+  discoveryReady: boolean;
 }
 
 export const getBuilderFoundationCompletion = (foundation: BuilderFoundation | null): BuilderFoundationCompletion => {
@@ -150,7 +235,9 @@ export const getBuilderFoundationCompletion = (foundation: BuilderFoundation | n
       ideaToProblemComplete: false,
       leanCanvasComplete: false,
       earlyAdopterComplete: false,
-      interviewReady: false,
+      interviewGuideComplete: false,
+      outreachTrackerComplete: false,
+      discoveryReady: false,
     };
   }
 
@@ -176,10 +263,30 @@ export const getBuilderFoundationCompletion = (foundation: BuilderFoundation | n
     foundation.earlyAdopter.whyThisGroupFirst,
   ].every((value) => value.trim().length > 0);
 
+  const interviewGuideComplete =
+    foundation.interviewGuide.primaryLearningGoal.trim().length > 0 &&
+    foundation.interviewGuide.openingQuestions.length > 0 &&
+    foundation.interviewGuide.problemQuestions.length > 0 &&
+    foundation.interviewGuide.currentBehaviorQuestions.length > 0 &&
+    foundation.interviewGuide.closingQuestions.length > 0;
+
+  const outreachTrackerComplete =
+    foundation.outreachTracker.outreachGoal.trim().length > 0 &&
+    foundation.outreachTracker.sourcingChannels.length > 0 &&
+    foundation.outreachTracker.messageHook.trim().length > 0 &&
+    foundation.outreachTracker.targets.length > 0;
+
   return {
     ideaToProblemComplete,
     leanCanvasComplete,
     earlyAdopterComplete,
-    interviewReady: ideaToProblemComplete && leanCanvasComplete && earlyAdopterComplete,
+    interviewGuideComplete,
+    outreachTrackerComplete,
+    discoveryReady:
+      ideaToProblemComplete &&
+      leanCanvasComplete &&
+      earlyAdopterComplete &&
+      interviewGuideComplete &&
+      outreachTrackerComplete,
   };
 };

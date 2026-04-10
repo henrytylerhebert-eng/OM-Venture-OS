@@ -1,9 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
-import { getInterviews, createInterview, updateInterview, deleteInterview } from '../services/evidenceService';
+import { getInterviews, createInterview, updateInterview, deleteInterview, getAssumptions } from '../services/evidenceService';
 import { getCompanies } from '../services/companyService';
 import { getCohortParticipations } from '../services/cohortService';
-import { Interview, Company, CohortParticipation } from '../types';
+import { getBuilderFoundation } from '../services/builderFoundationService';
+import { createEmptyBuilderFoundation, getBuilderFoundationCompletion } from '../lib/builderFoundation';
+import {
+  Interview,
+  Company,
+  CohortParticipation,
+  BuilderFoundation,
+  Assumption,
+  OutreachTargetStatus,
+} from '../types';
 import { 
   MessageSquare, 
   Plus, 
@@ -11,20 +21,18 @@ import {
   Calendar, 
   User, 
   Trash2, 
-  ChevronRight, 
   Target,
   TrendingUp,
-  Filter,
   AlertCircle,
   CheckCircle2,
   Quote,
   Edit2,
-  ExternalLink,
-  Info,
-  Building
+  Building,
+  ArrowRight
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
+import { getRoleScopedPath } from '../lib/roleRouting';
 
 const DiscoveryInterviews: React.FC = () => {
   const { profile } = useAuth();
@@ -34,6 +42,8 @@ const DiscoveryInterviews: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
   const [participations, setParticipations] = useState<CohortParticipation[]>([]);
+  const [builderFoundation, setBuilderFoundation] = useState<BuilderFoundation | null>(null);
+  const [assumptions, setAssumptions] = useState<Assumption[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingInterview, setEditingInterview] = useState<Interview | null>(null);
@@ -87,10 +97,67 @@ const DiscoveryInterviews: React.FC = () => {
     return () => unsubInterviews();
   }, [selectedCompanyId, isStaff]);
 
+  useEffect(() => {
+    if (isStaff || !selectedCompanyId) {
+      setBuilderFoundation(null);
+      setAssumptions([]);
+      return undefined;
+    }
+
+    const unsubFoundation = getBuilderFoundation(selectedCompanyId, (record) => {
+      setBuilderFoundation(record || createEmptyBuilderFoundation(selectedCompanyId));
+    });
+    const unsubAssumptions = getAssumptions(setAssumptions, selectedCompanyId);
+
+    return () => {
+      unsubFoundation();
+      unsubAssumptions();
+    };
+  }, [selectedCompanyId, isStaff]);
+
   const activeParticipation = useMemo(() => {
     if (!selectedCompanyId) return null;
     return participations.find(p => p.companyId === selectedCompanyId && p.status === 'active');
   }, [selectedCompanyId, participations]);
+  const setupCompletion = useMemo(
+    () => getBuilderFoundationCompletion(builderFoundation),
+    [builderFoundation]
+  );
+  const discoverySetupReady =
+    setupCompletion.ideaToProblemComplete &&
+    setupCompletion.leanCanvasComplete &&
+    setupCompletion.earlyAdopterComplete &&
+    assumptions.length > 0 &&
+    setupCompletion.interviewGuideComplete &&
+    setupCompletion.outreachTrackerComplete;
+  const weakestAssumption = useMemo(
+    () =>
+      assumptions
+        .slice()
+        .sort(
+          (left, right) =>
+            right.priorityScore - left.priorityScore ||
+            right.importanceScore - left.importanceScore ||
+            new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+        )[0],
+    [assumptions]
+  );
+  const scheduledOutreachCount = builderFoundation?.outreachTracker.targets.filter(
+    (target) => target.status === OutreachTargetStatus.SCHEDULED
+  ).length || 0;
+  const nextSetupPath = !setupCompletion.ideaToProblemComplete
+    ? getRoleScopedPath(profile?.role, 'problem')
+    : !setupCompletion.leanCanvasComplete
+      ? getRoleScopedPath(profile?.role, 'canvas')
+      : !setupCompletion.earlyAdopterComplete
+        ? getRoleScopedPath(profile?.role, 'early-adopter')
+        : assumptions.length === 0
+          ? getRoleScopedPath(profile?.role, 'assumptions')
+          : !setupCompletion.interviewGuideComplete
+            ? getRoleScopedPath(profile?.role, 'interview-guide')
+            : !setupCompletion.outreachTrackerComplete
+              ? getRoleScopedPath(profile?.role, 'outreach')
+              : '';
 
   const handleSaveInterview = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,6 +274,76 @@ const DiscoveryInterviews: React.FC = () => {
           )}
         </div>
       </header>
+
+      {!isStaff && selectedCompanyId && (
+        <section
+          className={cn(
+            'rounded-[28px] border p-6 shadow-sm',
+            discoverySetupReady ? 'border-sky-200 bg-sky-50' : 'border-amber-200 bg-amber-50'
+          )}
+        >
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <p
+                className={cn(
+                  'text-xs font-semibold uppercase tracking-[0.18em]',
+                  discoverySetupReady ? 'text-sky-800' : 'text-amber-800'
+                )}
+              >
+                Discovery Setup Context
+              </p>
+              <h2 className="text-xl font-semibold text-slate-950">Interview Capture is the first hard proof layer.</h2>
+              <p className="max-w-3xl text-sm leading-6 text-slate-700">
+                The problem draft, assumption map, interview guide, and outreach tracker should feed these interviews. They are setup work, not proof. Proof starts when real customer conversations are logged here.
+              </p>
+            </div>
+            {!discoverySetupReady && nextSetupPath ? (
+              <Link
+                to={nextSetupPath}
+                className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+              >
+                Finish setup first
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            ) : null}
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-3xl bg-white/80 p-5 ring-1 ring-black/5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Target segment</p>
+              <p className="mt-3 text-sm font-semibold text-slate-950">
+                {builderFoundation?.interviewGuide.targetSegment || builderFoundation?.earlyAdopter.segmentName || 'Still not chosen'}
+              </p>
+            </div>
+            <div className="rounded-3xl bg-white/80 p-5 ring-1 ring-black/5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Primary learning goal</p>
+              <p className="mt-3 text-sm font-semibold text-slate-950">
+                {builderFoundation?.interviewGuide.primaryLearningGoal || 'Still not written'}
+              </p>
+            </div>
+            <div className="rounded-3xl bg-white/80 p-5 ring-1 ring-black/5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Weakest assumption</p>
+              <p className="mt-3 text-sm font-semibold text-slate-950">
+                {weakestAssumption?.statement || 'Still not mapped'}
+              </p>
+            </div>
+            <div className="rounded-3xl bg-white/80 p-5 ring-1 ring-black/5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Outreach status</p>
+              <p className="mt-3 text-sm font-semibold text-slate-950">
+                {builderFoundation?.outreachTracker.targets.length
+                  ? `${scheduledOutreachCount} scheduled / ${builderFoundation.outreachTracker.targets.length} tracked`
+                  : 'No tracked outreach yet'}
+              </p>
+            </div>
+          </div>
+
+          {!discoverySetupReady && (
+            <div className="mt-5 rounded-2xl border border-amber-200 bg-white px-4 py-4 text-sm leading-6 text-amber-900">
+              Discovery setup is still incomplete. Keep these conversations honest by finishing the missing Builder prep before treating interview volume as real progress.
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Progress Stats - Only show if a company is selected */}
       {selectedCompanyId && (

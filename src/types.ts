@@ -339,12 +339,50 @@ export interface EarlyAdopterProfile {
   excludedSegments: string[];
 }
 
+export interface BuilderInterviewGuide {
+  targetSegment: string;
+  primaryLearningGoal: string;
+  assumptionIds: string[];
+  openingQuestions: string[];
+  problemQuestions: string[];
+  currentBehaviorQuestions: string[];
+  alternativeQuestions: string[];
+  closingQuestions: string[];
+  successSignalsToListenFor: string[];
+}
+
+export enum OutreachTargetStatus {
+  TO_CONTACT = "to_contact",
+  CONTACTED = "contacted",
+  REPLIED = "replied",
+  SCHEDULED = "scheduled",
+}
+
+export interface BuilderOutreachTarget {
+  label: string;
+  roleOrCompany: string;
+  outreachChannel: string;
+  status: OutreachTargetStatus;
+  notes: string;
+}
+
+export interface BuilderOutreachTracker {
+  outreachGoal: string;
+  targetCount: number;
+  sourcingChannels: string[];
+  messageHook: string;
+  followUpWindow: string;
+  targets: BuilderOutreachTarget[];
+}
+
 export interface BuilderFoundation {
   id: string;
   companyId: string;
   ideaToProblem: BuilderIdeaToProblem;
   leanCanvas: LeanCanvasDraft;
   earlyAdopter: EarlyAdopterProfile;
+  interviewGuide: BuilderInterviewGuide;
+  outreachTracker: BuilderOutreachTracker;
   createdAt: string;
   updatedAt: string;
   updatedByPersonId?: string;

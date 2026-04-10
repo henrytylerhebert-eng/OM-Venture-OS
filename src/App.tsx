@@ -17,9 +17,12 @@ import Copilot from './pages/Copilot';
 import IdeaProblemTranslator from './pages/IdeaProblemTranslator';
 import LeanCanvasBuilder from './pages/LeanCanvasBuilder';
 import EarlyAdopterSelector from './pages/EarlyAdopterSelector';
+import InterviewGuideBuilder from './pages/InterviewGuideBuilder';
+import OutreachTracker from './pages/OutreachTracker';
 import DiscoveryInterviews from './pages/DiscoveryInterviews';
 import Patterns from './pages/Patterns';
 import Assumptions from './pages/Assumptions';
+import AssumptionMapper from './pages/AssumptionMapper';
 import Experiments from './pages/Experiments';
 import Signals from './pages/Signals';
 import ReadinessQueue from './pages/ReadinessQueue';
@@ -85,9 +88,11 @@ export default function App() {
               <Route path="problem" element={<IdeaProblemTranslator />} />
               <Route path="canvas" element={<LeanCanvasBuilder />} />
               <Route path="early-adopter" element={<EarlyAdopterSelector />} />
+              <Route path="assumptions" element={<AssumptionMapper />} />
+              <Route path="interview-guide" element={<InterviewGuideBuilder />} />
+              <Route path="outreach" element={<OutreachTracker />} />
               <Route path="discovery" element={<DiscoveryInterviews />} />
               <Route path="patterns" element={<Patterns />} />
-              <Route path="assumptions" element={<Assumptions />} />
               <Route path="experiments" element={<Experiments />} />
               <Route path="signals" element={<Signals />} />
               <Route path="profile" element={<Placeholder title="Founder Profile" />} />
@@ -115,6 +120,8 @@ export default function App() {
             <Route path="/problem" element={<RolePathRedirect segment="problem" allowedRoles={[RoleType.FOUNDER, RoleType.STARTUP_TEAM]} />} />
             <Route path="/canvas" element={<RolePathRedirect segment="canvas" allowedRoles={[RoleType.FOUNDER, RoleType.STARTUP_TEAM]} />} />
             <Route path="/early-adopter" element={<RolePathRedirect segment="early-adopter" allowedRoles={[RoleType.FOUNDER, RoleType.STARTUP_TEAM]} />} />
+            <Route path="/interview-guide" element={<RolePathRedirect segment="interview-guide" allowedRoles={[RoleType.FOUNDER, RoleType.STARTUP_TEAM]} />} />
+            <Route path="/outreach" element={<RolePathRedirect segment="outreach" allowedRoles={[RoleType.FOUNDER, RoleType.STARTUP_TEAM]} />} />
             <Route path="/discovery" element={<RolePathRedirect segment="discovery" allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF, RoleType.FOUNDER, RoleType.STARTUP_TEAM, RoleType.MENTOR]} />} />
             <Route path="/patterns" element={<RolePathRedirect segment="patterns" allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF, RoleType.FOUNDER, RoleType.STARTUP_TEAM, RoleType.MENTOR]} />} />
             <Route path="/assumptions" element={<RolePathRedirect segment="assumptions" allowedRoles={[RoleType.OM_ADMIN, RoleType.OM_STAFF, RoleType.FOUNDER, RoleType.STARTUP_TEAM, RoleType.MENTOR]} />} />

@@ -8,10 +8,13 @@ import {
   Building,
   CheckCircle2,
   Clock3,
+  FileText,
   FlaskConical,
   LayoutTemplate,
+  Lightbulb,
   MessageSquare,
   Plus,
+  Send,
   Signal as SignalIcon,
   Target,
   Users2,
@@ -33,6 +36,7 @@ import { getCompanyResourceAccessForCompany } from '../services/unlockService';
 import { getBuilderFoundation } from '../services/builderFoundationService';
 import {
   Assumption,
+  AssumptionStatus,
   AssignmentStatus,
   BuilderFoundation,
   Cohort,
@@ -214,15 +218,49 @@ const FounderDashboard: React.FC = () => {
     () => summarizePatternWidgets(patterns).strongestPattern,
     [patterns]
   );
+  const weakestAssumption = useMemo(
+    () =>
+      assumptions
+        .slice()
+        .sort(
+          (left, right) =>
+            right.priorityScore - left.priorityScore ||
+            right.importanceScore - left.importanceScore ||
+            new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+        )
+        .find((assumption) => assumption.status !== AssumptionStatus.VALIDATED) || assumptions[0],
+    [assumptions]
+  );
   const foundationCompletion = useMemo(
     () => getBuilderFoundationCompletion(builderFoundation),
     [builderFoundation]
   );
+  const assumptionMapReady = assumptions.length > 0;
+  const discoverySetupReady =
+    foundationCompletion.ideaToProblemComplete &&
+    foundationCompletion.leanCanvasComplete &&
+    foundationCompletion.earlyAdopterComplete &&
+    assumptionMapReady &&
+    foundationCompletion.interviewGuideComplete &&
+    foundationCompletion.outreachTrackerComplete;
   const synthesisReady = Boolean(
     selectedInsight && selectedInsight.strongPatternCount > 0 && selectedInsight.assumptionCount > 0 && strongestPattern
   );
   const currentDirectionLabel =
     strongestPattern?.status.replace(/_/g, ' ') || 'direction still needs a decision';
+  const builderSetupNextPath = !foundationCompletion.ideaToProblemComplete
+    ? getRoleScopedPath(profile?.role, 'problem')
+    : !foundationCompletion.leanCanvasComplete
+      ? getRoleScopedPath(profile?.role, 'canvas')
+      : !foundationCompletion.earlyAdopterComplete
+        ? getRoleScopedPath(profile?.role, 'early-adopter')
+        : !assumptionMapReady
+          ? getRoleScopedPath(profile?.role, 'assumptions')
+          : !foundationCompletion.interviewGuideComplete
+            ? getRoleScopedPath(profile?.role, 'interview-guide')
+            : !foundationCompletion.outreachTrackerComplete
+              ? getRoleScopedPath(profile?.role, 'outreach')
+              : getRoleScopedPath(profile?.role, 'discovery');
   const currentBuilderStep = selectedInsight
     ? selectedInsight.countedInterviews === 0
       ? !foundationCompletion.ideaToProblemComplete
@@ -241,11 +279,32 @@ const FounderDashboard: React.FC = () => {
             }
           : !foundationCompletion.earlyAdopterComplete
             ? {
-                label: 'Early Adopter Selector',
-                description: 'Choose the first customer group to learn from before you begin outreach and interview capture.',
-                nextAction: 'Select the early adopter',
-                nextPath: getRoleScopedPath(profile?.role, 'early-adopter'),
-              }
+              label: 'Early Adopter Selector',
+              description: 'Choose the first customer group to learn from before you begin outreach and interview capture.',
+              nextAction: 'Select the early adopter',
+              nextPath: getRoleScopedPath(profile?.role, 'early-adopter'),
+            }
+            : !assumptionMapReady
+              ? {
+                  label: 'Assumption Mapper',
+                  description: 'Map the beliefs that discovery could prove wrong before you write the interview guide.',
+                  nextAction: 'Map assumptions',
+                  nextPath: getRoleScopedPath(profile?.role, 'assumptions'),
+                }
+              : !foundationCompletion.interviewGuideComplete
+                ? {
+                    label: 'Interview Guide Builder',
+                    description: 'Turn the riskiest assumptions into a real customer conversation guide before you start logging interviews.',
+                    nextAction: 'Build the guide',
+                    nextPath: getRoleScopedPath(profile?.role, 'interview-guide'),
+                  }
+                : !foundationCompletion.outreachTrackerComplete
+                  ? {
+                      label: 'Outreach Tracker',
+                      description: 'Track who you need to reach, how you will reach them, and which conversations are still not booked.',
+                      nextAction: 'Open outreach tracker',
+                      nextPath: getRoleScopedPath(profile?.role, 'outreach'),
+                    }
             : {
                 label: 'Interview Capture',
                 description: 'Start logging customer conversations with clear pain, segment, alternatives, and quotes before you try to synthesize anything.',
@@ -315,6 +374,60 @@ const FounderDashboard: React.FC = () => {
                 : 'current',
         },
         {
+          label: 'Assumption Mapper',
+          path: getRoleScopedPath(profile?.role, 'assumptions'),
+          description: foundationCompletion.earlyAdopterComplete
+            ? 'Name the risky beliefs that discovery needs to pressure-test.'
+            : 'Locked until the primary early adopter is chosen.',
+          count: assumptions.length,
+          detail: weakestAssumption?.statement || 'Map the first risky belief',
+          icon: Lightbulb,
+          state:
+            !foundationCompletion.earlyAdopterComplete
+              ? 'locked'
+              : assumptionMapReady
+                ? 'complete'
+                : 'current',
+        },
+        {
+          label: 'Interview Guide Builder',
+          path: getRoleScopedPath(profile?.role, 'interview-guide'),
+          description: assumptionMapReady
+            ? 'Turn the main risks into a discovery guide with real learning prompts.'
+            : 'Locked until at least one risky belief is mapped.',
+          count:
+            (builderFoundation?.interviewGuide.openingQuestions.length || 0) +
+            (builderFoundation?.interviewGuide.problemQuestions.length || 0),
+          detail: foundationCompletion.interviewGuideComplete
+            ? `${builderFoundation?.interviewGuide.assumptionIds.length || 0} mapped risk${(builderFoundation?.interviewGuide.assumptionIds.length || 0) === 1 ? '' : 's'} in guide`
+            : 'Write the guide before booking interviews',
+          icon: FileText,
+          state:
+            !assumptionMapReady
+              ? 'locked'
+              : foundationCompletion.interviewGuideComplete
+                ? 'complete'
+                : 'current',
+        },
+        {
+          label: 'Outreach Tracker',
+          path: getRoleScopedPath(profile?.role, 'outreach'),
+          description: foundationCompletion.interviewGuideComplete
+            ? 'Track who you need to reach and how many conversations are actually getting booked.'
+            : 'Locked until the interview guide is clear enough to support outreach.',
+          count: builderFoundation?.outreachTracker.targets.length || 0,
+          detail: foundationCompletion.outreachTrackerComplete
+            ? `${builderFoundation?.outreachTracker.targets.length || 0} target${(builderFoundation?.outreachTracker.targets.length || 0) === 1 ? '' : 's'} in tracker`
+            : 'No honest outreach plan recorded yet',
+          icon: Send,
+          state:
+            !foundationCompletion.interviewGuideComplete
+              ? 'locked'
+              : foundationCompletion.outreachTrackerComplete
+                ? 'complete'
+                : 'current',
+        },
+        {
           label: 'Interview Capture',
           path: getRoleScopedPath(profile?.role, 'discovery'),
           description: 'Capture customer truth before you try to synthesize or design a test.',
@@ -322,7 +435,7 @@ const FounderDashboard: React.FC = () => {
           detail: `${selectedInsight?.highPainInterviewCount || 0} strong pain signal${selectedInsight?.highPainInterviewCount === 1 ? '' : 's'}`,
           icon: MessageSquare,
           state:
-            !foundationCompletion.interviewReady
+            !discoverySetupReady
               ? 'locked'
               : (selectedInsight?.countedInterviews || 0) === 0
                 ? 'current'
@@ -336,7 +449,7 @@ const FounderDashboard: React.FC = () => {
           detail: `${selectedInsight?.strongPatternCount || 0} pattern${selectedInsight?.strongPatternCount === 1 ? '' : 's'} / ${selectedInsight?.assumptionCount || 0} assumption${selectedInsight?.assumptionCount === 1 ? '' : 's'}`,
           icon: Brain,
           state:
-            !foundationCompletion.interviewReady || (selectedInsight?.countedInterviews || 0) === 0
+            !discoverySetupReady || (selectedInsight?.countedInterviews || 0) === 0
               ? 'locked'
               : !synthesisReady
                 ? 'current'
@@ -526,23 +639,15 @@ const FounderDashboard: React.FC = () => {
                 </p>
               </div>
               <Link
-                to={
-                  !foundationCompletion.ideaToProblemComplete
-                    ? getRoleScopedPath(profile?.role, 'problem')
-                    : !foundationCompletion.leanCanvasComplete
-                      ? getRoleScopedPath(profile?.role, 'canvas')
-                      : !foundationCompletion.earlyAdopterComplete
-                        ? getRoleScopedPath(profile?.role, 'early-adopter')
-                        : getRoleScopedPath(profile?.role, 'discovery')
-                }
+                to={builderSetupNextPath}
                 className="inline-flex items-center gap-2 rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
               >
-                {foundationCompletion.interviewReady ? 'Open Interview Capture' : 'Complete Builder inputs'}
+                {discoverySetupReady ? 'Open Interview Capture' : 'Keep building setup'}
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div className="rounded-3xl bg-slate-50 p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Who has the problem</p>
                 <p className="mt-3 text-sm font-semibold text-slate-950">
@@ -571,6 +676,39 @@ const FounderDashboard: React.FC = () => {
                 </p>
                 <p className="mt-2 text-sm text-slate-500">
                   {builderFoundation?.earlyAdopter.personaLabel || 'Choose the first role or person to learn from.'}
+                </p>
+              </div>
+              <div className="rounded-3xl bg-slate-50 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Riskiest assumption</p>
+                <p className="mt-3 text-sm font-semibold text-slate-950">
+                  {weakestAssumption?.statement || 'Still not mapped'}
+                </p>
+                <p className="mt-2 text-sm text-slate-500">
+                  {weakestAssumption
+                    ? 'Discovery should pressure-test this belief before it turns into build work.'
+                    : 'Assumption Mapper should name the first risky belief before the interview guide is written.'}
+                </p>
+              </div>
+              <div className="rounded-3xl bg-slate-50 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Interview guide</p>
+                <p className="mt-3 text-sm font-semibold text-slate-950">
+                  {builderFoundation?.interviewGuide.primaryLearningGoal || 'Learning goal still needs to be written'}
+                </p>
+                <p className="mt-2 text-sm text-slate-500">
+                  {foundationCompletion.interviewGuideComplete
+                    ? `${builderFoundation?.interviewGuide.assumptionIds.length || 0} mapped risk${(builderFoundation?.interviewGuide.assumptionIds.length || 0) === 1 ? '' : 's'} feeding discovery`
+                    : 'Write the conversation guide before you treat interviews as ready to run.'}
+                </p>
+              </div>
+              <div className="rounded-3xl bg-slate-50 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Outreach tracker</p>
+                <p className="mt-3 text-sm font-semibold text-slate-950">
+                  {builderFoundation?.outreachTracker.outreachGoal || 'Outreach goal still needs to be set'}
+                </p>
+                <p className="mt-2 text-sm text-slate-500">
+                  {(builderFoundation?.outreachTracker.targets.length || 0) > 0
+                    ? `${builderFoundation?.outreachTracker.targets.length || 0} target${(builderFoundation?.outreachTracker.targets.length || 0) === 1 ? '' : 's'} recorded before interview capture`
+                    : 'Track who you will contact before discovery starts reading as active.'}
                 </p>
               </div>
             </div>
