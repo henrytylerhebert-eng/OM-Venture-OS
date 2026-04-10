@@ -99,6 +99,22 @@ const InterviewGuideBuilder: React.FC = () => {
         .sort((left, right) => right.priorityScore - left.priorityScore || right.importanceScore - left.importanceScore),
     [assumptions]
   );
+  const weakestAssumption = activeAssumptions[0];
+
+  useEffect(() => {
+    if (!weakestAssumption) {
+      return;
+    }
+
+    setFormState((current) =>
+      current.assumptionIds.length > 0
+        ? current
+        : {
+            ...current,
+            assumptionIds: [weakestAssumption.id],
+          }
+    );
+  }, [weakestAssumption]);
 
   const handleToggleAssumption = (assumptionId: string) => {
     setFormState((current) => ({
@@ -196,7 +212,7 @@ const InterviewGuideBuilder: React.FC = () => {
 
       {!activeAssumptions.length ? (
         <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-900 shadow-sm">
-          The assumption map is still empty. You can draft a guide now, but it will be sharper once at least one risky belief is named clearly.
+          The assumption map is still empty. You can draft a guide now, but it will only become a real discovery guide once at least one risky belief is ranked clearly.
         </div>
       ) : null}
 
@@ -337,11 +353,20 @@ const InterviewGuideBuilder: React.FC = () => {
 
         <div className="space-y-6">
           <div className="rounded-[28px] border border-sky-200 bg-sky-50 p-6 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-800">Guide check</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-800">Weakest Assumption Now</p>
+            <div className="mt-4 space-y-3 text-sm leading-6 text-slate-700">
+              <p><span className="font-semibold text-slate-900">Risk:</span> {weakestAssumption?.statement || 'Still not ranked yet.'}</p>
+              <p><span className="font-semibold text-slate-900">Type:</span> {weakestAssumption?.type || 'Name the first risky belief.'}</p>
+              <p><span className="font-semibold text-slate-900">Why it matters:</span> {weakestAssumption?.notes || 'Use the assumption map to explain what discovery still needs to learn.'}</p>
+            </div>
+          </div>
+
+          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Guide check</p>
             <div className="mt-4 space-y-3 text-sm leading-6 text-slate-700">
               <p><span className="font-semibold text-slate-900">Target segment:</span> {formState.targetSegment || 'Still not named.'}</p>
               <p><span className="font-semibold text-slate-900">Learning goal:</span> {formState.primaryLearningGoal || 'Still not clear enough.'}</p>
-              <p><span className="font-semibold text-slate-900">Mapped risks in play:</span> {formState.assumptionIds.length}</p>
+              <p><span className="font-semibold text-slate-900">Mapped risks in play:</span> {formState.assumptionIds.length || 'No assumptions linked yet'}</p>
             </div>
           </div>
 
@@ -350,7 +375,7 @@ const InterviewGuideBuilder: React.FC = () => {
             <div className="mt-5 space-y-3 text-sm leading-6 text-slate-700">
               <p>Ask about real past behavior, not hypothetical future praise.</p>
               <p>Do not let this become a pitch script. It is a learning guide.</p>
-              <p>Keep the guide tied to the assumptions you actually need discovery to pressure-test.</p>
+              <p>Keep the guide tied to the risky assumptions you actually need discovery to pressure-test.</p>
             </div>
             <div className="mt-6 flex flex-wrap gap-4">
               <Link to={getRoleScopedPath(profile?.role, 'assumptions')} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">

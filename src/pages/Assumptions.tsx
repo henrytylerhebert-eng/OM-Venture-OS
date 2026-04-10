@@ -4,11 +4,9 @@ import { where } from 'firebase/firestore';
 import {
   AlertCircle,
   ArrowRight,
-  Brain,
   Building,
   CheckCircle2,
   Edit2,
-  FlaskConical,
   HelpCircle,
   Lightbulb,
   Plus,
@@ -25,16 +23,18 @@ import {
 } from '../services/evidenceService';
 import { getCompanies } from '../services/companyService';
 import { getMentorAssignments } from '../services/mentorService';
+import { getBuilderFoundation } from '../services/builderFoundationService';
+import { createEmptyBuilderFoundation, getBuilderFoundationCompletion } from '../lib/builderFoundation';
 import {
   Assumption,
   AssumptionStatus,
   AssumptionType,
   AssignmentStatus,
+  BuilderFoundation,
   Company,
   MentorAssignment,
   Pattern,
   RoleType,
-  StageConfidence,
 } from '../types';
 import { cn } from '../lib/utils';
 import { getRoleScopedPath } from '../lib/roleRouting';
@@ -93,14 +93,63 @@ const getAssumptionGapLabel = (assumption: Assumption) => {
   return 'Pressure-test whether the current evidence is strong enough to move this out of the weakest-risk stack.';
 };
 
-const isStrongPattern = (pattern: Pattern) =>
-  pattern.confidence === StageConfidence.HIGH ||
-  pattern.numberOfMentions >= 4 ||
-  pattern.averagePainIntensity >= 4 ||
-  pattern.unpromptedMentions >= 2;
-
 const calculatePriorityScore = (importanceScore: number, evidenceScore: number) =>
   importanceScore + (10 - evidenceScore);
+
+const assumptionTypeMeta: Record<
+  AssumptionType,
+  {
+    title: string;
+    description: string;
+    emptyState: string;
+  }
+> = {
+  [AssumptionType.DESIRABILITY]: {
+    title: 'Desirability',
+    description: 'Start here first. What still needs to be true about the customer, the pain, or the urgency?',
+    emptyState: 'No desirability assumptions ranked yet. Name the customer belief that discovery could prove wrong first.',
+  },
+  [AssumptionType.FEASIBILITY]: {
+    title: 'Feasibility',
+    description: 'What still needs to be true about delivering the solution well enough to matter?',
+    emptyState: 'No feasibility assumptions ranked yet. Add one only after the customer problem is clear enough to pursue.',
+  },
+  [AssumptionType.VIABILITY]: {
+    title: 'Viability',
+    description: 'What still needs to be true for the direction to sustain itself once customer pain is real?',
+    emptyState: 'No viability assumptions ranked yet. Keep this secondary to desirability early in discovery.',
+  },
+};
+
+const buildFounderAssumptionDrafts = (foundation: BuilderFoundation | null) => {
+  if (!foundation) {
+    return [];
+  }
+
+  const owner = foundation.ideaToProblem.problemOwner || 'this customer';
+  const moment = foundation.ideaToProblem.problemMoment || 'the problem moment';
+  const currentBehavior = foundation.ideaToProblem.currentBehavior || 'their current workaround';
+  const alternative = foundation.ideaToProblem.currentAlternative || foundation.leanCanvas.existingAlternatives[0] || 'the current alternative';
+  const earlyAdopter = foundation.earlyAdopter.segmentName || owner;
+
+  return [
+    {
+      statement: `${earlyAdopter} feels enough pain during ${moment} to change behavior instead of staying with ${alternative}.`,
+      type: AssumptionType.DESIRABILITY,
+      notes: `Discovery needs to hear whether ${owner} actually feels this sharply enough to move away from ${currentBehavior}.`,
+    },
+    {
+      statement: `We can make the current path meaningfully better than ${alternative} for ${earlyAdopter}.`,
+      type: AssumptionType.FEASIBILITY,
+      notes: 'Only keep this assumption high in the stack if customer pain is already clear enough to justify solving.',
+    },
+    {
+      statement: `${earlyAdopter} would keep using a better path often enough for this direction to be worth pursuing.`,
+      type: AssumptionType.VIABILITY,
+      notes: 'Treat this as secondary early in discovery. Customer pain should be stronger than business-model guesswork first.',
+    },
+  ].filter((draft) => draft.statement.trim().length > 0);
+};
 
 const Assumptions: React.FC = () => {
   const { profile } = useAuth();
@@ -113,6 +162,7 @@ const Assumptions: React.FC = () => {
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [mentorAssignments, setMentorAssignments] = useState<MentorAssignment[]>([]);
+  const [builderFoundation, setBuilderFoundation] = useState<BuilderFoundation | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -160,15 +210,20 @@ const Assumptions: React.FC = () => {
     if (!selectedCompanyId) {
       setAssumptions([]);
       setPatterns([]);
+      setBuilderFoundation(null);
       return undefined;
     }
 
     const unsubAssumptions = getAssumptions(setAssumptions, selectedCompanyId);
     const unsubPatterns = getPatterns(setPatterns, selectedCompanyId);
+    const unsubFoundation = getBuilderFoundation(selectedCompanyId, (record) => {
+      setBuilderFoundation(record || createEmptyBuilderFoundation(selectedCompanyId));
+    });
 
     return () => {
       unsubAssumptions();
       unsubPatterns();
+      unsubFoundation();
     };
   }, [selectedCompanyId]);
 
@@ -193,20 +248,32 @@ const Assumptions: React.FC = () => {
     [rankedAssumptions]
   );
 
-  const strongPatternCount = useMemo(
-    () => patterns.filter((pattern) => isStrongPattern(pattern)).length,
-    [patterns]
-  );
-
   const unresolvedAssumptionCount = useMemo(
-    () =>
-      assumptions.filter((assumption) => assumption.status !== AssumptionStatus.VALIDATED).length,
+    () => assumptions.filter((assumption) => assumption.status !== AssumptionStatus.VALIDATED).length,
     [assumptions]
   );
-
-  const mvpDesignUnlocked = Boolean(strongPatternCount > 0 && assumptions.length > 0);
-  const patternsPath = getRoleScopedPath(profile?.role, 'patterns');
-  const experimentsPath = getRoleScopedPath(profile?.role, 'experiments');
+  const groupedAssumptions = useMemo(
+    () => ({
+      [AssumptionType.DESIRABILITY]: rankedAssumptions.filter((assumption) => assumption.type === AssumptionType.DESIRABILITY),
+      [AssumptionType.FEASIBILITY]: rankedAssumptions.filter((assumption) => assumption.type === AssumptionType.FEASIBILITY),
+      [AssumptionType.VIABILITY]: rankedAssumptions.filter((assumption) => assumption.type === AssumptionType.VIABILITY),
+    }),
+    [rankedAssumptions]
+  );
+  const foundationCompletion = useMemo(
+    () => getBuilderFoundationCompletion(builderFoundation),
+    [builderFoundation]
+  );
+  const founderAssumptionDrafts = useMemo(
+    () => buildFounderAssumptionDrafts(builderFoundation),
+    [builderFoundation]
+  );
+  const nextFoundationPath = !foundationCompletion.ideaToProblemComplete
+    ? getRoleScopedPath(profile?.role, 'problem')
+    : !foundationCompletion.leanCanvasComplete
+      ? getRoleScopedPath(profile?.role, 'canvas')
+      : getRoleScopedPath(profile?.role, 'early-adopter');
+  const interviewGuidePath = getRoleScopedPath(profile?.role, 'interview-guide');
 
   const openNewAssumption = (linkedPattern?: Pattern) => {
     setEditingAssumption(null);
@@ -220,6 +287,17 @@ const Assumptions: React.FC = () => {
             ? AssumptionType.DESIRABILITY
             : AssumptionType.VIABILITY,
       notes: linkedPattern ? `We still need to learn whether "${linkedPattern.problemTheme}" is strong enough to support the next test.` : '',
+    });
+    setShowAddModal(true);
+  };
+
+  const openNewAssumptionFromDraft = (draft: { statement: string; type: AssumptionType; notes: string }) => {
+    setEditingAssumption(null);
+    setFormData({
+      ...initialFormState,
+      statement: draft.statement,
+      type: draft.type,
+      notes: draft.notes,
     });
     setShowAddModal(true);
   };
@@ -309,7 +387,7 @@ const Assumptions: React.FC = () => {
                 : 'border border-sky-200 bg-sky-50 text-sky-800'
           )}
         >
-          {isStaff ? 'OM Assumption Review' : isMentor ? 'Mentor Assumption Readout' : 'Builder Assumption Stack'}
+          {isStaff ? 'OM Assumption Review' : isMentor ? 'Mentor Assumption Readout' : 'Builder Discovery Setup'}
         </div>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-2">
@@ -318,14 +396,14 @@ const Assumptions: React.FC = () => {
                 ? 'Review what is still risky before a founder builds.'
                 : isMentor
                   ? 'See the risks that still need proof.'
-                  : 'Rank what is still risky before you build.'}
+                  : 'Rank what discovery still needs to learn first.'}
             </h1>
             <p className="max-w-3xl text-sm leading-6 text-slate-600">
               {isStaff
                 ? 'Patterns are the repeated truths. Assumptions are the remaining risks. Use this stack to see what still needs proof before OM pushes a founder into test design or build support.'
                 : isMentor
                   ? 'This is the read-only risk stack for assigned companies so mentor guidance attaches to what is still unproven.'
-                  : 'Patterns are evidence-backed observations. Assumptions are the beliefs that could still break your direction if they turn out to be wrong.'}
+                  : 'Move from “I think” toward “I need to learn.” Start with desirability, then name the feasibility and viability risks that discovery should pressure-test later.'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -378,40 +456,47 @@ const Assumptions: React.FC = () => {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-800">
-                  <span className="rounded-full bg-white px-3 py-1 ring-1 ring-sky-200">Patterns</span>
+                  <span className="rounded-full bg-white px-3 py-1 ring-1 ring-sky-200">Early Adopter</span>
                   <ArrowRight className="h-3.5 w-3.5" />
-                  <span className="rounded-full bg-sky-900 px-3 py-1 text-white">Assumption Stack</span>
+                  <span className="rounded-full bg-sky-900 px-3 py-1 text-white">Assumption Mapper</span>
                   <ArrowRight className="h-3.5 w-3.5" />
-                  <span className="rounded-full bg-white px-3 py-1 ring-1 ring-sky-200">MVP / Test Design</span>
+                  <span className="rounded-full bg-white px-3 py-1 ring-1 ring-sky-200">Interview Guide Builder</span>
                 </div>
                 <p className="max-w-3xl text-sm leading-6 text-slate-700">
-                  Use this step to answer one question clearly: what is still risky enough that the next MVP or test should be built to learn it?
+                  Use this step to answer one question clearly: what still needs to be true before customer discovery starts turning your Week 1 inputs into something you actually hear from the market?
                 </p>
               </div>
-              <Link
-                to={patternsPath}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:border-slate-400"
-              >
-                Back to Patterns
-                <ArrowRight className="h-4 w-4" />
-              </Link>
+              <div className="rounded-3xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+                Assumptions are not proof. This step prepares discovery; it does not replace it.
+              </div>
             </div>
           </section>
 
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Primary Early Adopter</p>
+              <p className="mt-3 text-lg font-semibold text-slate-950">
+                {builderFoundation?.earlyAdopter.segmentName || 'Still not chosen yet'}
+              </p>
+              <p className="mt-2 text-sm text-slate-600">
+                {builderFoundation?.earlyAdopter.whyThisGroupFirst || 'Choose one group to learn from first before ranking discovery risks.'}
+              </p>
+            </div>
             <div className="rounded-3xl border border-rose-200 bg-rose-50 p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">Weakest Assumption</p>
               <p className="mt-3 text-lg font-semibold text-rose-950">
                 {weakestAssumption?.statement || 'No weak assumption named yet'}
               </p>
               <p className="mt-2 text-sm text-rose-900/80">
-                {weakestAssumption ? 'This is the risk most likely to shape the next test.' : 'Add one after reviewing repeated patterns.'}
+                {weakestAssumption ? 'This is the risk most likely to shape the first interview guide.' : 'Add one after reviewing your Week 1 inputs.'}
               </p>
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Strong Patterns Ready</p>
-              <p className="mt-3 text-3xl font-semibold text-slate-950">{strongPatternCount}</p>
-              <p className="mt-2 text-sm text-slate-600">Repeated truths strong enough to support ranked risks.</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">What They Do Now</p>
+              <p className="mt-3 text-lg font-semibold text-slate-950">
+                {builderFoundation?.ideaToProblem.currentBehavior || 'Current behavior still needs to be named'}
+              </p>
+              <p className="mt-2 text-sm text-slate-600">Use the real workaround as the baseline for what discovery should test.</p>
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Unresolved Risks</p>
@@ -419,32 +504,32 @@ const Assumptions: React.FC = () => {
               <p className="mt-2 text-sm text-slate-600">Assumptions that still need proof before build-heavy work.</p>
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">MVP / Test Design</p>
-              <p className="mt-3 text-lg font-semibold text-slate-950">{mvpDesignUnlocked ? 'Unlocked' : 'Still Locked'}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Interview Guide Builder</p>
+              <p className="mt-3 text-lg font-semibold text-slate-950">{assumptions.length > 0 ? 'Ready to Open' : 'Still Blocked'}</p>
               <p className="mt-2 text-sm text-slate-600">
-                {mvpDesignUnlocked
-                  ? 'You have enough synthesis to design the smallest useful test.'
-                  : 'Name repeated truth and top risks first so the next test is grounded.'}
+                {assumptions.length > 0
+                  ? 'You have enough ranked risk to turn discovery into a real conversation guide.'
+                  : 'Rank at least one risky belief so the guide knows what it is supposed to learn.'}
               </p>
             </div>
           </section>
         </>
       )}
 
-      {selectedCompanyId && patterns.length === 0 && (
+      {selectedCompanyId && isFounder && !foundationCompletion.earlyAdopterComplete && (
         <section className="rounded-[28px] border border-amber-200 bg-amber-50 p-6 shadow-sm">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-lg font-semibold text-amber-950">Patterns should come first.</h2>
+              <h2 className="text-lg font-semibold text-amber-950">Week 1 clarity is still thin.</h2>
               <p className="mt-2 text-sm leading-6 text-amber-900/80">
-                Do not guess at risks before you have repeated truth. Use the Patterns step to confirm repeated pain, who feels it most, and what people do now instead.
+                Before you rank risky beliefs, make sure the problem owner, current behavior, current alternative, and primary early adopter are specific enough to guide discovery.
               </p>
             </div>
             <Link
-              to={patternsPath}
+              to={nextFoundationPath}
               className="inline-flex shrink-0 items-center gap-2 rounded-full border border-amber-200 bg-white px-4 py-2 text-sm font-semibold text-amber-900 transition-colors hover:border-amber-300"
             >
-              Open Patterns
+              Tighten Week 1 Inputs
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -458,7 +543,7 @@ const Assumptions: React.FC = () => {
               <div>
                 <h2 className="text-lg font-semibold text-slate-950">Assumption Stack</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Rank the risks that are still unproven so the next MVP or test resolves something important.
+                  Rank the risks that are still unproven so discovery learns something important before interviews begin.
                 </p>
               </div>
               <div className="relative w-full max-w-sm">
@@ -474,8 +559,22 @@ const Assumptions: React.FC = () => {
             </div>
 
             {rankedAssumptions.length > 0 ? (
-              <div className="mt-6 space-y-4">
-                {rankedAssumptions.map((assumption) => {
+              <div className="mt-6 space-y-6">
+                {[AssumptionType.DESIRABILITY, AssumptionType.FEASIBILITY, AssumptionType.VIABILITY].map((assumptionType) => {
+                  const typedAssumptions = groupedAssumptions[assumptionType];
+                  return (
+                    <section key={assumptionType} className="space-y-4">
+                      <div className="rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4">
+                        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                          <div>
+                            <h3 className="text-lg font-semibold text-slate-950">{assumptionTypeMeta[assumptionType].title}</h3>
+                            <p className="mt-1 text-sm text-slate-600">{assumptionTypeMeta[assumptionType].description}</p>
+                          </div>
+                          <span className={typeClass(assumptionType)}>{typedAssumptions.length} ranked</span>
+                        </div>
+                      </div>
+
+                      {typedAssumptions.length > 0 ? typedAssumptions.map((assumption) => {
                   const linkedPattern = patterns.find((pattern) => pattern.id === assumption.linkedPatternId);
 
                   return (
@@ -555,6 +654,13 @@ const Assumptions: React.FC = () => {
                       </div>
                     </article>
                   );
+                      }) : (
+                        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
+                          {assumptionTypeMeta[assumptionType].emptyState}
+                        </div>
+                      )}
+                    </section>
+                  );
                 })}
               </div>
             ) : (
@@ -562,17 +668,30 @@ const Assumptions: React.FC = () => {
                 <Lightbulb className="mx-auto h-12 w-12 text-slate-300" />
                 <h3 className="mt-4 text-lg font-semibold text-slate-950">No assumptions ranked yet</h3>
                 <p className="mt-2 text-sm text-slate-500">
-                  Start with the risk that would break this direction if it turns out to be wrong.
+                  Start with the risk that would break this direction if discovery hears something different from what you currently believe.
                 </p>
-                {canEditAssumptions && patterns[0] && (
+                {canEditAssumptions && founderAssumptionDrafts.length > 0 ? (
+                  <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+                    {founderAssumptionDrafts.map((draft) => (
+                      <button
+                        key={draft.statement}
+                        onClick={() => openNewAssumptionFromDraft(draft)}
+                        className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Draft {assumptionTypeMeta[draft.type].title}
+                      </button>
+                    ))}
+                  </div>
+                ) : canEditAssumptions ? (
                   <button
-                    onClick={() => openNewAssumption(patterns[0])}
+                    onClick={() => openNewAssumption()}
                     className="mt-5 inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
                   >
                     <Plus className="h-4 w-4" />
-                    Draft From Strongest Pattern
+                    Add Assumption
                   </button>
-                )}
+                ) : null}
               </div>
             )}
           </div>
@@ -581,42 +700,42 @@ const Assumptions: React.FC = () => {
             <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-950">Founder Prompts</h2>
               <div className="mt-5 space-y-3 text-sm leading-6 text-slate-700">
-                <p>What still has not been proven?</p>
-                <p>Which assumption would break this direction if it is wrong?</p>
-                <p>What should the next MVP or test help you learn?</p>
+                <p>What must be true for this customer to care enough to change behavior?</p>
+                <p>What are you still assuming about the pain, urgency, or current workaround?</p>
+                <p>Which one risky belief should the first interview guide pressure-test?</p>
               </div>
             </div>
 
             <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-950">Guardrails</h2>
               <div className="mt-5 space-y-3 text-sm leading-6 text-slate-700">
-                <p>Patterns are not assumptions. A repeated pain is evidence; an unproven belief is still a risk.</p>
-                <p>Do not use this step to claim readiness, support access, or investor proof.</p>
-                <p>Build only what helps you learn whether the weakest assumption is true.</p>
+                <p>Desirability comes first. Do not hide customer uncertainty behind feasibility or business-model language too early.</p>
+                <p>Do not treat these assumptions as proof. They are the questions discovery still needs to answer.</p>
+                <p>Build the guide around the weakest assumption, not around the story you most want to tell.</p>
               </div>
             </div>
 
             <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-950">MVP / Test Design Handoff</h2>
+              <h2 className="text-lg font-semibold text-slate-950">Interview Guide Builder Handoff</h2>
               <p className="mt-1 text-sm text-slate-500">
-                The next screen should inherit the weakest assumption, not skip past it.
+                The next screen should inherit the weakest assumption, not skip past discovery.
               </p>
-              {mvpDesignUnlocked ? (
+              {assumptions.length > 0 ? (
                 <div className="mt-5 space-y-3">
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                    Your strongest patterns and ranked risks are in place. Design the smallest test that resolves the weakest assumption next.
+                    Your assumption stack is in place. Turn the weakest assumption into a guide that helps you hear real behavior, not polite agreement.
                   </div>
                   <Link
-                    to={experimentsPath}
+                    to={interviewGuidePath}
                     className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
                   >
-                    Open MVP / Test Design
-                    <FlaskConical className="h-4 w-4" />
+                    Open Interview Guide Builder
+                    <ArrowRight className="h-4 w-4" />
                   </Link>
                 </div>
               ) : (
                 <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  Name at least one strong pattern and one ranked assumption before you move into MVP / Test Design.
+                  Rank at least one assumption before you move into Interview Guide Builder.
                 </div>
               )}
             </div>
@@ -630,10 +749,10 @@ const Assumptions: React.FC = () => {
             <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
               <div>
                 <h2 className="text-xl font-semibold text-slate-950">
-                  {editingAssumption ? 'Refine assumption stack' : 'Add assumption from pattern evidence'}
+                  {editingAssumption ? 'Refine assumption stack' : 'Add assumption to the discovery stack'}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Assumptions are the remaining risks, not repeated truth. Tie them back to patterns wherever possible.
+                  Assumptions are the remaining risks, not proof. Tie them back to Week 1 inputs now and to pattern evidence later when it exists.
                 </p>
               </div>
               <button

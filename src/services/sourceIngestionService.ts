@@ -375,6 +375,34 @@ const getExistingReviewItem = async (sourceSubmissionId: string) => {
   return docSnap ? normalizeReviewItem({ id: docSnap.id, ...docSnap.data() } as IngestionReviewItem) : null;
 };
 
+const getExistingSourceSubmission = async ({
+  sourceSystem,
+  sourceFormId,
+  sourceSubmissionId,
+}: {
+  sourceSystem: SourceSystem;
+  sourceFormId: string;
+  sourceSubmissionId: string;
+}) => {
+  const deterministicId = buildSourceSubmissionDocumentId(sourceSystem, sourceFormId, sourceSubmissionId);
+  const deterministicDoc = await getDoc(doc(db, 'sourceSubmissions', deterministicId));
+  if (deterministicDoc.exists()) {
+    return normalizeSourceSubmission({ id: deterministicDoc.id, ...(deterministicDoc.data() as Partial<SourceSubmission>) });
+  }
+
+  const legacySnapshot = await getDocs(
+    query(collection(db, 'sourceSubmissions'), where('sourceSubmissionId', '==', sourceSubmissionId))
+  );
+  const legacyDoc = legacySnapshot.docs
+    .map((docSnap) => normalizeSourceSubmission({ id: docSnap.id, ...(docSnap.data() as Partial<SourceSubmission>) }))
+    .find(
+      (submission) =>
+        submission.sourceSystem === sourceSystem && submission.sourceFormId === sourceFormId
+    );
+
+  return legacyDoc || null;
+};
+
 const appendIngestionNotes = (existingNotes: string | undefined, nextNote: string | undefined) => {
   if (!nextNote?.trim()) {
     return existingNotes;
@@ -440,21 +468,18 @@ export const getIngestionReviewQueue = (
 
 export const createSourceSubmission = async (submission: SourceSubmissionCreateInput): Promise<string> => {
   try {
-    const docId = buildSourceSubmissionDocumentId(
-      submission.sourceSystem || SourceSystem.JOTFORM,
-      submission.sourceFormId,
-      submission.sourceSubmissionId
-    );
-    const docRef = doc(db, 'sourceSubmissions', docId);
-    const snapshot = await getDoc(docRef);
-    const existing = snapshot.exists()
-      ? normalizeSourceSubmission({ id: snapshot.id, ...(snapshot.data() as Partial<SourceSubmission>) })
-      : null;
+    const sourceSystem = submission.sourceSystem || SourceSystem.JOTFORM;
+    const existing = await getExistingSourceSubmission({
+      sourceSystem,
+      sourceFormId: submission.sourceFormId,
+      sourceSubmissionId: submission.sourceSubmissionId,
+    });
     const payload = prepareSourceSubmissionWrite({ submission, existing });
+    const docRef = doc(db, 'sourceSubmissions', existing?.id || payload.id);
 
     const { id: _ignoredId, ...writePayload } = payload;
     await setDoc(docRef, sanitizeData(writePayload));
-    return docId;
+    return docRef.id;
   } catch (error) {
     return handleFirestoreError(error, OperationType.CREATE, 'sourceSubmissions');
   }

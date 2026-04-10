@@ -362,6 +362,8 @@ const EvidenceIntakeReview: React.FC = () => {
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Raw Source Evidence</p>
                     <div className="mt-4 space-y-2 text-sm text-slate-700">
                       <p><span className="font-semibold text-slate-950">Form:</span> {selectedSubmission.sourceFormTitle}</p>
+                      <p><span className="font-semibold text-slate-950">Raw import path:</span> {selectedSubmission.sourceImportPath || 'Legacy raw intake record'}</p>
+                      <p><span className="font-semibold text-slate-950">Source submission id:</span> {selectedSubmission.sourceSubmissionId}</p>
                       <p><span className="font-semibold text-slate-950">Submission date:</span> {selectedRow.sourceSubmissionDateLabel}</p>
                       <p><span className="font-semibold text-slate-950">Submission type:</span> {selectedRow.submissionTypeLabel}</p>
                       <p><span className="font-semibold text-slate-950">Founder text:</span> {selectedRow.sourceFounderText || 'Missing in source payload'}</p>

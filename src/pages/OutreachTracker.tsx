@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Plus, Send, Trash2 } from 'lucide-react';
 import { useAuth } from '../components/AuthProvider';
 import { getCompanies } from '../services/companyService';
+import { getAssumptions } from '../services/evidenceService';
 import { getBuilderFoundation, upsertBuilderFoundation } from '../services/builderFoundationService';
 import {
   createEmptyBuilderFoundation,
@@ -11,6 +12,8 @@ import {
   parseBuilderList,
 } from '../lib/builderFoundation';
 import {
+  type Assumption,
+  AssumptionStatus,
   type BuilderFoundation,
   type BuilderOutreachTarget,
   type Company,
@@ -38,6 +41,7 @@ const OutreachTracker: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [builderFoundation, setBuilderFoundation] = useState<BuilderFoundation | null>(null);
+  const [assumptions, setAssumptions] = useState<Assumption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [saveError, setSaveError] = useState('');
@@ -66,10 +70,11 @@ const OutreachTracker: React.FC = () => {
   useEffect(() => {
     if (!selectedCompanyId) {
       setBuilderFoundation(null);
+      setAssumptions([]);
       return undefined;
     }
 
-    return getBuilderFoundation(selectedCompanyId, (record) => {
+    const unsubFoundation = getBuilderFoundation(selectedCompanyId, (record) => {
       const nextFoundation = record || createEmptyBuilderFoundation(selectedCompanyId);
       setBuilderFoundation(nextFoundation);
       setFormState({
@@ -89,10 +94,29 @@ const OutreachTracker: React.FC = () => {
         targets: nextFoundation.outreachTracker.targets.length > 0 ? nextFoundation.outreachTracker.targets : [createEmptyTarget()],
       });
     });
+    const unsubAssumptions = getAssumptions(setAssumptions, selectedCompanyId);
+
+    return () => {
+      unsubFoundation();
+      unsubAssumptions();
+    };
   }, [selectedCompanyId]);
 
   const selectedCompany = companies.find((company) => company.id === selectedCompanyId);
   const completion = useMemo(() => getBuilderFoundationCompletion(builderFoundation), [builderFoundation]);
+  const activeAssumptions = useMemo(
+    () =>
+      assumptions
+        .filter((assumption) => assumption.status !== AssumptionStatus.VALIDATED)
+        .sort((left, right) => right.priorityScore - left.priorityScore || right.importanceScore - left.importanceScore),
+    [assumptions]
+  );
+  const primaryAssumption = useMemo(() => {
+    const linkedAssumptions = builderFoundation?.interviewGuide.assumptionIds.length
+      ? activeAssumptions.filter((assumption) => builderFoundation?.interviewGuide.assumptionIds.includes(assumption.id))
+      : [];
+    return linkedAssumptions[0] || activeAssumptions[0];
+  }, [activeAssumptions, builderFoundation?.interviewGuide.assumptionIds]);
 
   const updateTarget = (index: number, patch: Partial<BuilderOutreachTarget>) => {
     setFormState((current) => ({
@@ -156,6 +180,9 @@ const OutreachTracker: React.FC = () => {
   };
 
   const scheduledTargets = formState.targets.filter((target) => target.status === OutreachTargetStatus.SCHEDULED).length;
+  const contactedTargets = formState.targets.filter((target) => target.status === OutreachTargetStatus.CONTACTED).length;
+  const repliedTargets = formState.targets.filter((target) => target.status === OutreachTargetStatus.REPLIED).length;
+  const realTargetCount = formState.targets.filter((target) => target.label || target.roleOrCompany).length;
 
   if (loading) {
     return <div className="p-8 text-sm text-slate-500">Loading outreach tracker...</div>;
@@ -209,7 +236,7 @@ const OutreachTracker: React.FC = () => {
 
       {!completion.interviewGuideComplete ? (
         <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-900 shadow-sm">
-          The interview guide is still thin. You can start a tracker now, but outreach will be stronger once the learning goal and question sets are clear.
+          The interview guide is still thin. You can start a tracker now, but outreach will be stronger once the learning goal, linked assumptions, and question sets are clear.
         </div>
       ) : null}
 
@@ -346,7 +373,7 @@ const OutreachTracker: React.FC = () => {
                         value={target.notes}
                         onChange={(event) => updateTarget(index, { notes: event.target.value })}
                         className={textAreaClass}
-                        placeholder="Warm path, follow-up note, scheduling context..."
+                        placeholder="Why this person fits, warm path, follow-up note, or scheduling context..."
                       />
                     </label>
                   </div>
@@ -378,10 +405,19 @@ const OutreachTracker: React.FC = () => {
 
         <div className="space-y-6">
           <div className="rounded-[28px] border border-sky-200 bg-sky-50 p-6 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-800">Assumption Under Test</p>
+            <div className="mt-4 space-y-3 text-sm leading-6 text-slate-700">
+              <p><span className="font-semibold text-slate-900">Risk:</span> {primaryAssumption?.statement || 'Still not chosen yet.'}</p>
+              <p><span className="font-semibold text-slate-900">Learning goal:</span> {builderFoundation?.interviewGuide.primaryLearningGoal || 'Use the interview guide to set a clear learning goal first.'}</p>
+            </div>
+          </div>
+
+          <div className="rounded-[28px] border border-sky-200 bg-sky-50 p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-800">Tracker check</p>
             <div className="mt-4 space-y-3 text-sm leading-6 text-slate-700">
               <p><span className="font-semibold text-slate-900">Goal:</span> {formState.outreachGoal || 'Still not named.'}</p>
-              <p><span className="font-semibold text-slate-900">Targets listed:</span> {formState.targets.filter((target) => target.label || target.roleOrCompany).length}</p>
+              <p><span className="font-semibold text-slate-900">Targets listed:</span> {realTargetCount}</p>
+              <p><span className="font-semibold text-slate-900">Contacted / replied:</span> {contactedTargets} / {repliedTargets}</p>
               <p><span className="font-semibold text-slate-900">Scheduled so far:</span> {scheduledTargets}</p>
             </div>
           </div>
@@ -398,10 +434,16 @@ const OutreachTracker: React.FC = () => {
                 <ArrowLeft className="h-4 w-4" />
                 Back to Interview Guide
               </Link>
-              <Link to={getRoleScopedPath(profile?.role, 'discovery')} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                Continue to Interview Capture
-                <ArrowRight className="h-4 w-4" />
-              </Link>
+              {scheduledTargets > 0 ? (
+                <Link to={getRoleScopedPath(profile?.role, 'discovery')} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  Continue to Interview Capture
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              ) : (
+                <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500">
+                  Book the first interview to make Interview Capture real
+                </span>
+              )}
             </div>
           </div>
         </div>
