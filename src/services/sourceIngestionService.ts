@@ -492,9 +492,6 @@ export const createJotformRawSourceSubmission = async (
     ...submission,
     sourceSystem: SourceSystem.JOTFORM,
     sourceImportPath: submission.sourceImportPath || DEFAULT_JOTFORM_RAW_IMPORT_PATH,
-    matchConfidence: SourceMatchConfidence.UNRESOLVED,
-    ingestionStatus: SourceIngestionStatus.RECEIVED,
-    normalizedTargets: [],
   });
 
 export const createIngestionReviewItem = async (reviewItem: IngestionReviewCreateInput): Promise<string> => {

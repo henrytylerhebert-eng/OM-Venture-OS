@@ -141,6 +141,51 @@ assert.equal(preservedReviewState.matchConfidence, SourceMatchConfidence.HIGH);
 assert.equal(preservedReviewState.matchedCompanyId, 'company-1');
 assert.equal(preservedReviewState.matchedPersonId, 'person-1');
 
+const preservedNormalizedState = prepareSourceSubmissionWrite({
+  submission: {
+    sourceSystem: SourceSystem.JOTFORM,
+    sourceLane: SourceSubmissionLane.MEETING_NOTES,
+    sourceImportPath: 'jotform_raw_intake',
+    sourceFormId: 'form-1',
+    sourceFormTitle: 'Builder Notes - Template',
+    sourceSubmissionId: 'submission-2',
+    sourceSubmittedAt: now,
+    sourceSubmitterName: 'Taylor Founder',
+    sourceSubmitterEmail: 'taylor@acmehealth.com',
+    sourceCompanyText: 'Acme Health',
+    sourceFounderText: 'Taylor Founder',
+    sourceMeetingDate: now,
+    sourceTopicText: 'Customer discovery debrief',
+    rawPayload: {
+      meetingTopic: 'Fresh payload',
+      meetingNotes: 'New raw notes body',
+      company: 'Acme Health',
+    },
+  },
+  existing: makeSubmission({
+    id: 'existing-normalized-doc',
+    sourceSystem: SourceSystem.JOTFORM,
+    sourceLane: SourceSubmissionLane.MEETING_NOTES,
+    sourceFormId: 'form-1',
+    sourceFormTitle: 'Builder Notes - Template',
+    sourceSubmissionId: 'submission-2',
+    sourceHash: 'older-hash-2',
+    matchConfidence: SourceMatchConfidence.HIGH,
+    ingestionStatus: SourceIngestionStatus.NORMALIZED,
+    matchedCompanyId: 'company-1',
+    matchedPersonId: 'person-1',
+    normalizedTargets: [{ targetType: NormalizedTargetType.INTERVIEW, targetId: 'interview-1', normalizedAt: now }],
+    normalizedAt: now,
+  }),
+  now,
+});
+assert.equal(preservedNormalizedState.ingestionStatus, SourceIngestionStatus.NORMALIZED);
+assert.equal(preservedNormalizedState.matchConfidence, SourceMatchConfidence.HIGH);
+assert.deepEqual(preservedNormalizedState.normalizedTargets, [
+  { targetType: NormalizedTargetType.INTERVIEW, targetId: 'interview-1', normalizedAt: now },
+]);
+assert.equal(preservedNormalizedState.normalizedAt, now);
+
 const unresolvedResult = matchSourceSubmissionCandidates(
   makeSubmission({
     sourceSubmitterName: 'Unknown Founder',

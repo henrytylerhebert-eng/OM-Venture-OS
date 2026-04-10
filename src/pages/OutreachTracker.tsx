@@ -117,6 +117,20 @@ const OutreachTracker: React.FC = () => {
       : [];
     return linkedAssumptions[0] || activeAssumptions[0];
   }, [activeAssumptions, builderFoundation?.interviewGuide.assumptionIds]);
+  const parsedSourcingChannels = useMemo(() => parseBuilderList(formState.sourcingChannels), [formState.sourcingChannels]);
+  const sanitizedTargets = useMemo(
+    () =>
+      formState.targets
+        .map((target) => ({
+          ...target,
+          label: target.label.trim(),
+          roleOrCompany: target.roleOrCompany.trim(),
+          outreachChannel: target.outreachChannel.trim(),
+          notes: target.notes.trim(),
+        }))
+        .filter((target) => target.label || target.roleOrCompany),
+    [formState.targets]
+  );
 
   const updateTarget = (index: number, patch: Partial<BuilderOutreachTarget>) => {
     setFormState((current) => ({
@@ -148,6 +162,12 @@ const OutreachTracker: React.FC = () => {
     setSaveState('saving');
     setSaveError('');
 
+    if (!formState.outreachGoal.trim() || parsedSourcingChannels.length === 0 || !formState.messageHook.trim() || sanitizedTargets.length === 0) {
+      setSaveState('error');
+      setSaveError('Name the outreach goal, list real sourcing channels, write the message hook, and add at least one real target before saving.');
+      return;
+    }
+
     try {
       await upsertBuilderFoundation(
         selectedCompanyId,
@@ -155,18 +175,10 @@ const OutreachTracker: React.FC = () => {
           outreachTracker: {
             outreachGoal: formState.outreachGoal.trim(),
             targetCount: formState.targetCount,
-            sourcingChannels: parseBuilderList(formState.sourcingChannels),
+            sourcingChannels: parsedSourcingChannels,
             messageHook: formState.messageHook.trim(),
             followUpWindow: formState.followUpWindow.trim(),
-            targets: formState.targets
-              .map((target) => ({
-                ...target,
-                label: target.label.trim(),
-                roleOrCompany: target.roleOrCompany.trim(),
-                outreachChannel: target.outreachChannel.trim(),
-                notes: target.notes.trim(),
-              }))
-              .filter((target) => target.label || target.roleOrCompany || target.notes),
+            targets: sanitizedTargets,
           },
         },
         profile?.personId
@@ -179,10 +191,10 @@ const OutreachTracker: React.FC = () => {
     }
   };
 
-  const scheduledTargets = formState.targets.filter((target) => target.status === OutreachTargetStatus.SCHEDULED).length;
-  const contactedTargets = formState.targets.filter((target) => target.status === OutreachTargetStatus.CONTACTED).length;
-  const repliedTargets = formState.targets.filter((target) => target.status === OutreachTargetStatus.REPLIED).length;
-  const realTargetCount = formState.targets.filter((target) => target.label || target.roleOrCompany).length;
+  const scheduledTargets = sanitizedTargets.filter((target) => target.status === OutreachTargetStatus.SCHEDULED).length;
+  const contactedTargets = sanitizedTargets.filter((target) => target.status === OutreachTargetStatus.CONTACTED).length;
+  const repliedTargets = sanitizedTargets.filter((target) => target.status === OutreachTargetStatus.REPLIED).length;
+  const realTargetCount = sanitizedTargets.filter((target) => target.label || target.roleOrCompany).length;
 
   if (loading) {
     return <div className="p-8 text-sm text-slate-500">Loading outreach tracker...</div>;
@@ -417,8 +429,8 @@ const OutreachTracker: React.FC = () => {
             <div className="mt-4 space-y-3 text-sm leading-6 text-slate-700">
               <p><span className="font-semibold text-slate-900">Goal:</span> {formState.outreachGoal || 'Still not named.'}</p>
               <p><span className="font-semibold text-slate-900">Targets listed:</span> {realTargetCount}</p>
-              <p><span className="font-semibold text-slate-900">Contacted / replied:</span> {contactedTargets} / {repliedTargets}</p>
-              <p><span className="font-semibold text-slate-900">Scheduled so far:</span> {scheduledTargets}</p>
+              <p><span className="font-semibold text-slate-900">Pipeline:</span> {contactedTargets} contacted • {repliedTargets} replied • {scheduledTargets} scheduled</p>
+              <p><span className="font-semibold text-slate-900">Sourcing lanes:</span> {parsedSourcingChannels.join(' • ') || 'Still not listed.'}</p>
             </div>
           </div>
 

@@ -64,6 +64,21 @@ const IdeaProblemTranslator: React.FC = () => {
   }, [selectedCompanyId]);
 
   const selectedCompany = companies.find((company) => company.id === selectedCompanyId);
+  const trimmedIdea = {
+    founderIdea: formState.founderIdea.trim(),
+    problemOwner: formState.problemOwner.trim(),
+    problemMoment: formState.problemMoment.trim(),
+    currentBehavior: formState.currentBehavior.trim(),
+    currentAlternative: formState.currentAlternative.trim(),
+    whyCurrentPathFallsShort: formState.whyCurrentPathFallsShort.trim(),
+    desiredOutcome: formState.desiredOutcome.trim(),
+  };
+  const gateReady = Boolean(
+    trimmedIdea.problemOwner &&
+      trimmedIdea.problemMoment &&
+      trimmedIdea.currentBehavior &&
+      trimmedIdea.whyCurrentPathFallsShort
+  );
 
   const translatedProblem = useMemo(() => {
     if (!formState.problemOwner || !formState.problemMoment) {
@@ -82,18 +97,24 @@ const IdeaProblemTranslator: React.FC = () => {
     setSaveState('saving');
     setSaveError('');
 
+    if (!gateReady) {
+      setSaveState('error');
+      setSaveError('Name who has the problem, when it shows up, what they do now, and why the current path falls short before saving.');
+      return;
+    }
+
     try {
       await upsertBuilderFoundation(
         selectedCompanyId,
         {
           ideaToProblem: {
-            founderIdea: formState.founderIdea.trim(),
-            problemOwner: formState.problemOwner.trim(),
-            problemMoment: formState.problemMoment.trim(),
-            currentBehavior: formState.currentBehavior.trim(),
-            currentAlternative: formState.currentAlternative.trim(),
-            whyCurrentPathFallsShort: formState.whyCurrentPathFallsShort.trim(),
-            desiredOutcome: formState.desiredOutcome.trim(),
+            founderIdea: trimmedIdea.founderIdea,
+            problemOwner: trimmedIdea.problemOwner,
+            problemMoment: trimmedIdea.problemMoment,
+            currentBehavior: trimmedIdea.currentBehavior,
+            currentAlternative: trimmedIdea.currentAlternative,
+            whyCurrentPathFallsShort: trimmedIdea.whyCurrentPathFallsShort,
+            desiredOutcome: trimmedIdea.desiredOutcome,
           },
         },
         profile?.personId
@@ -263,6 +284,32 @@ const IdeaProblemTranslator: React.FC = () => {
           <div className="rounded-[28px] border border-sky-200 bg-sky-50 p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-800">Translated Problem Draft</p>
             <p className="mt-4 text-sm leading-7 text-slate-700">{translatedProblem}</p>
+          </div>
+
+          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold text-slate-950">Week 1 gate check</h2>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
+                {gateReady ? 'ready for canvas' : 'still drafting'}
+              </span>
+            </div>
+            <div className="mt-5 space-y-4 text-sm leading-6 text-slate-600">
+              <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                <p className="font-semibold text-slate-900">Who has the problem</p>
+                <p className="mt-1">{trimmedIdea.problemOwner || 'Still unnamed.'}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                <p className="font-semibold text-slate-900">What they do now</p>
+                <p className="mt-1">{trimmedIdea.currentBehavior || 'Current behavior still needs to be described.'}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                <p className="font-semibold text-slate-900">Why the current path falls short</p>
+                <p className="mt-1">{trimmedIdea.whyCurrentPathFallsShort || 'The weak workaround is still unclear.'}</p>
+              </div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
+                This is still founder input, not customer proof. Real evidence starts once discovery conversations begin.
+              </div>
+            </div>
           </div>
 
           <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">

@@ -100,6 +100,24 @@ const InterviewGuideBuilder: React.FC = () => {
     [assumptions]
   );
   const weakestAssumption = activeAssumptions[0];
+  const parsedGuide = useMemo(
+    () => ({
+      targetSegment: formState.targetSegment.trim(),
+      primaryLearningGoal: formState.primaryLearningGoal.trim(),
+      assumptionIds: formState.assumptionIds,
+      openingQuestions: parseBuilderList(formState.openingQuestions),
+      problemQuestions: parseBuilderList(formState.problemQuestions),
+      currentBehaviorQuestions: parseBuilderList(formState.currentBehaviorQuestions),
+      alternativeQuestions: parseBuilderList(formState.alternativeQuestions),
+      closingQuestions: parseBuilderList(formState.closingQuestions),
+      successSignalsToListenFor: parseBuilderList(formState.successSignalsToListenFor),
+    }),
+    [formState]
+  );
+  const selectedAssumptions = useMemo(
+    () => activeAssumptions.filter((assumption) => parsedGuide.assumptionIds.includes(assumption.id)),
+    [activeAssumptions, parsedGuide.assumptionIds]
+  );
 
   useEffect(() => {
     if (!weakestAssumption) {
@@ -134,20 +152,36 @@ const InterviewGuideBuilder: React.FC = () => {
     setSaveState('saving');
     setSaveError('');
 
+    if (
+      !parsedGuide.targetSegment ||
+      !parsedGuide.primaryLearningGoal ||
+      parsedGuide.assumptionIds.length === 0 ||
+      parsedGuide.openingQuestions.length === 0 ||
+      parsedGuide.problemQuestions.length === 0 ||
+      parsedGuide.currentBehaviorQuestions.length === 0 ||
+      parsedGuide.closingQuestions.length === 0
+    ) {
+      setSaveState('error');
+      setSaveError(
+        'Name the target segment and learning goal, link at least one risky assumption, and write the core question sets before saving.'
+      );
+      return;
+    }
+
     try {
       await upsertBuilderFoundation(
         selectedCompanyId,
         {
           interviewGuide: {
-            targetSegment: formState.targetSegment.trim(),
-            primaryLearningGoal: formState.primaryLearningGoal.trim(),
-            assumptionIds: formState.assumptionIds,
-            openingQuestions: parseBuilderList(formState.openingQuestions),
-            problemQuestions: parseBuilderList(formState.problemQuestions),
-            currentBehaviorQuestions: parseBuilderList(formState.currentBehaviorQuestions),
-            alternativeQuestions: parseBuilderList(formState.alternativeQuestions),
-            closingQuestions: parseBuilderList(formState.closingQuestions),
-            successSignalsToListenFor: parseBuilderList(formState.successSignalsToListenFor),
+            targetSegment: parsedGuide.targetSegment,
+            primaryLearningGoal: parsedGuide.primaryLearningGoal,
+            assumptionIds: parsedGuide.assumptionIds,
+            openingQuestions: parsedGuide.openingQuestions,
+            problemQuestions: parsedGuide.problemQuestions,
+            currentBehaviorQuestions: parsedGuide.currentBehaviorQuestions,
+            alternativeQuestions: parsedGuide.alternativeQuestions,
+            closingQuestions: parsedGuide.closingQuestions,
+            successSignalsToListenFor: parsedGuide.successSignalsToListenFor,
           },
         },
         profile?.personId
@@ -364,9 +398,14 @@ const InterviewGuideBuilder: React.FC = () => {
           <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Guide check</p>
             <div className="mt-4 space-y-3 text-sm leading-6 text-slate-700">
-              <p><span className="font-semibold text-slate-900">Target segment:</span> {formState.targetSegment || 'Still not named.'}</p>
-              <p><span className="font-semibold text-slate-900">Learning goal:</span> {formState.primaryLearningGoal || 'Still not clear enough.'}</p>
-              <p><span className="font-semibold text-slate-900">Mapped risks in play:</span> {formState.assumptionIds.length || 'No assumptions linked yet'}</p>
+              <p><span className="font-semibold text-slate-900">Target segment:</span> {parsedGuide.targetSegment || 'Still not named.'}</p>
+              <p><span className="font-semibold text-slate-900">Learning goal:</span> {parsedGuide.primaryLearningGoal || 'Still not clear enough.'}</p>
+              <p>
+                <span className="font-semibold text-slate-900">Mapped risks in play:</span>{' '}
+                {selectedAssumptions.length > 0
+                  ? selectedAssumptions.map((assumption) => assumption.statement).join(' • ')
+                  : 'No assumptions linked yet.'}
+              </p>
             </div>
           </div>
 

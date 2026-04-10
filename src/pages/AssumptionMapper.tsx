@@ -41,6 +41,28 @@ const statusClass = (status: AssumptionStatus) =>
     status === AssumptionStatus.STRONG && 'bg-sky-100 text-sky-700'
   );
 
+const assumptionTypeSections: Array<{
+  type: AssumptionType;
+  label: string;
+  description: string;
+}> = [
+  {
+    type: AssumptionType.DESIRABILITY,
+    label: 'Desirability',
+    description: 'Start with customer pain, urgency, and whether people would change behavior.',
+  },
+  {
+    type: AssumptionType.FEASIBILITY,
+    label: 'Feasibility',
+    description: 'Then ask what has to be technically or operationally possible to help.',
+  },
+  {
+    type: AssumptionType.VIABILITY,
+    label: 'Viability',
+    description: 'Only after that, ask what would make the direction sustainable enough to keep pursuing.',
+  },
+];
+
 const AssumptionMapper: React.FC = () => {
   const { profile } = useAuth();
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -98,6 +120,22 @@ const AssumptionMapper: React.FC = () => {
         .find((assumption) => assumption.status !== AssumptionStatus.VALIDATED) || assumptions[0],
     [assumptions]
   );
+  const groupedAssumptions = useMemo(() => {
+    const grouped: Record<AssumptionType, Assumption[]> = {
+      [AssumptionType.DESIRABILITY]: [],
+      [AssumptionType.FEASIBILITY]: [],
+      [AssumptionType.VIABILITY]: [],
+    };
+
+    assumptions
+      .slice()
+      .sort((left, right) => right.priorityScore - left.priorityScore || right.importanceScore - left.importanceScore)
+      .forEach((assumption) => {
+        grouped[assumption.type].push(assumption);
+      });
+
+    return grouped;
+  }, [assumptions]);
 
   const starterAssumptions = useMemo(() => {
     if (!builderFoundation) {
@@ -358,54 +396,74 @@ const AssumptionMapper: React.FC = () => {
         </div>
 
         {assumptions.length > 0 ? (
-          <div className="mt-6 space-y-4">
-            {assumptions
-              .slice()
-              .sort((left, right) => right.priorityScore - left.priorityScore || right.importanceScore - left.importanceScore)
-              .map((assumption) => (
-                <article key={assumption.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-base font-semibold text-slate-950">{assumption.statement}</p>
-                        <span className={statusClass(assumption.status)}>{assumption.status}</span>
-                      </div>
-                      <div className="grid gap-4 md:grid-cols-3">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Type</p>
-                          <p className="mt-1 text-sm text-slate-700">{assumption.type}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Priority</p>
-                          <p className="mt-1 text-sm text-slate-700">
-                            Importance {assumption.importanceScore}/10, evidence {assumption.evidenceScore}/10
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Why this matters</p>
-                          <p className="mt-1 text-sm text-slate-700">{assumption.notes || 'This risk still needs sharper learning language.'}</p>
-                        </div>
-                      </div>
+          <div className="mt-6 space-y-6">
+            {assumptionTypeSections.map((section) => {
+              const sectionAssumptions = groupedAssumptions[section.type];
+
+              return (
+                <div key={section.type} className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                  <div className="flex flex-col gap-2 border-b border-slate-200 pb-4">
+                    <div className="flex items-center gap-3">
+                      <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-700 ring-1 ring-slate-200">
+                        {section.label}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleEdit(assumption)}
-                        className="rounded-full border border-slate-300 bg-white p-2 text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-900"
-                        title="Edit assumption"
-                      >
-                        <HelpCircle className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(assumption.id)}
-                        className="rounded-full border border-slate-300 bg-white p-2 text-slate-500 transition-colors hover:border-rose-300 hover:text-rose-700"
-                        title="Delete assumption"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                    <p className="text-sm leading-6 text-slate-600">{section.description}</p>
                   </div>
-                </article>
-              ))}
+
+                  {sectionAssumptions.length > 0 ? (
+                    <div className="mt-4 space-y-4">
+                      {sectionAssumptions.map((assumption) => (
+                        <article key={assumption.id} className="rounded-3xl border border-slate-200 bg-white p-5">
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="space-y-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-base font-semibold text-slate-950">{assumption.statement}</p>
+                                <span className={statusClass(assumption.status)}>{assumption.status}</span>
+                              </div>
+                              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Priority</p>
+                                  <p className="mt-1 text-sm text-slate-700">
+                                    Importance {assumption.importanceScore}/10, evidence {assumption.evidenceScore}/10
+                                  </p>
+                                </div>
+                                <div className="md:col-span-1 xl:col-span-2">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Why this matters</p>
+                                  <p className="mt-1 text-sm text-slate-700">
+                                    {assumption.notes || 'This risk still needs sharper learning language.'}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleEdit(assumption)}
+                                className="rounded-full border border-slate-300 bg-white p-2 text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-900"
+                                title="Edit assumption"
+                              >
+                                <HelpCircle className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(assumption.id)}
+                                className="rounded-full border border-slate-300 bg-white p-2 text-slate-500 transition-colors hover:border-rose-300 hover:text-rose-700"
+                                title="Delete assumption"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-3xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
+                      No {section.label.toLowerCase()} assumptions mapped yet.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="mt-6 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
