@@ -273,7 +273,7 @@ const FounderDashboard: React.FC = () => {
         : !foundationCompletion.leanCanvasComplete
           ? {
               label: 'Lean Canvas Builder',
-              description: 'Turn the problem draft into a live Builder canvas with clear segments, alternatives, channels, and value promise before interviews start.',
+              description: 'Turn the problem draft into a Week 1 working canvas with clear segments, top problems, and existing alternatives before you move deeper into Builder.',
               nextAction: 'Build the canvas',
               nextPath: getRoleScopedPath(profile?.role, 'canvas'),
             }
@@ -341,7 +341,7 @@ const FounderDashboard: React.FC = () => {
           label: 'Lean Canvas Builder',
           path: getRoleScopedPath(profile?.role, 'canvas'),
           description: foundationCompletion.ideaToProblemComplete
-            ? 'Keep the Lean Canvas live as the working model for the problem, segment, alternatives, and value promise.'
+            ? 'Keep the Lean Canvas live as the Week 1 working model for customer segments, top problems, and existing alternatives.'
             : 'Locked until the problem owner, current behavior, and weak workaround are named.',
           count:
             (builderFoundation?.leanCanvas.customerSegments.length || 0) +

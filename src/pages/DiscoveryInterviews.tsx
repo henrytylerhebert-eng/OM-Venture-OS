@@ -228,11 +228,36 @@ const DiscoveryInterviews: React.FC = () => {
   const completedCount = companyInterviews.filter(i => i.countsTowardMinimum).length;
   const progress = Math.min((completedCount / interviewTarget) * 100, 100);
   const followUpsNeeded = companyInterviews.filter(i => i.followUpNeeded).length;
+  const patternsPath = getRoleScopedPath(profile?.role, 'patterns');
   
   const strongestQuote = useMemo(() => {
     const withQuotes = companyInterviews.filter(i => i.bestQuote && i.painIntensity >= 4);
     return withQuotes.length > 0 ? withQuotes[0].bestQuote : null;
   }, [companyInterviews]);
+  const topThemes = useMemo(
+    () => {
+      const rankedThemes: Record<string, { label: string; count: number }> =
+        companyInterviews.reduce<Record<string, { label: string; count: number }>>((acc, interview) => {
+          const theme = interview.problemTheme.trim();
+          if (!theme) {
+            return acc;
+          }
+
+          const key = theme.toLowerCase();
+          acc[key] = {
+            label: theme,
+            count: (acc[key]?.count || 0) + 1,
+          };
+          return acc;
+        }, {});
+
+      return Object.values(rankedThemes).sort(
+        (left, right) => right.count - left.count || left.label.localeCompare(right.label)
+      );
+    },
+    [companyInterviews]
+  );
+  const readyForPatternSynthesis = completedCount > 0 && (topThemes.length > 0 || Boolean(strongestQuote));
 
   const segments = Array.from(new Set(interviews.map(i => i.intervieweeSegment))).filter(Boolean);
   const themes = Array.from(new Set(interviews.map(i => i.problemTheme))).filter(Boolean);
@@ -398,6 +423,65 @@ const DiscoveryInterviews: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+
+      {!isStaff && selectedCompanyId && (
+        <section
+          className={cn(
+            'rounded-[28px] border p-6 shadow-sm',
+            readyForPatternSynthesis ? 'border-sky-200 bg-sky-50' : 'border-slate-200 bg-white'
+          )}
+        >
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <p
+                className={cn(
+                  'text-xs font-semibold uppercase tracking-[0.18em]',
+                  readyForPatternSynthesis ? 'text-sky-800' : 'text-slate-500'
+                )}
+              >
+                Next Builder Step
+              </p>
+              <h2 className="text-xl font-semibold text-slate-950">Patterns &amp; Assumptions should start from repeated interview truth.</h2>
+              <p className="max-w-3xl text-sm leading-6 text-slate-700">
+                Move into synthesis once repeated pains start showing up across interviews. Patterns should name what is real in the evidence. Assumptions should name what is still risky before you design the next test.
+              </p>
+            </div>
+            <Link
+              to={patternsPath}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors',
+                readyForPatternSynthesis
+                  ? 'bg-slate-950 text-white hover:bg-slate-800'
+                  : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+              )}
+            >
+              {readyForPatternSynthesis ? 'Open Patterns & Assumptions' : 'Patterns stay thin for now'}
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <div className="rounded-3xl bg-white/80 p-5 ring-1 ring-black/5">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Repeated pain emerging</p>
+              <p className="mt-3 text-lg font-semibold text-slate-950">
+                {topThemes[0] ? `${topThemes[0].label} (${topThemes[0].count})` : 'Still unclear'}
+              </p>
+            </div>
+            <div className="rounded-3xl bg-white/80 p-5 ring-1 ring-black/5">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Quote strength</p>
+              <p className="mt-3 text-sm font-semibold text-slate-950">
+                {strongestQuote ? strongestQuote : 'No strong quote captured yet'}
+              </p>
+            </div>
+            <div className="rounded-3xl bg-white/80 p-5 ring-1 ring-black/5">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">What should carry forward</p>
+              <p className="mt-3 text-sm font-semibold text-slate-950">
+                {weakestAssumption?.statement || 'Map the next risky belief once repeated themes are clear'}
+              </p>
+            </div>
+          </div>
+        </section>
       )}
 
       {/* Staff Review Needs - Only show if staff and no specific company selected */}

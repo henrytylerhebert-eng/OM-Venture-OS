@@ -140,7 +140,7 @@ const EarlyAdopterSelector: React.FC = () => {
           <div className="space-y-2">
             <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Early Adopter Selector</h1>
             <p className="max-w-3xl text-sm leading-6 text-slate-600">
-              Choose the primary early adopter you should learn from first. This is the person or segment that feels the problem sharply enough to interview, follow up with, and test with earliest.
+              Choose the one primary early adopter to focus on first. This is the person or segment most likely to feel the problem sharply enough to learn from before later Builder work begins.
             </p>
           </div>
           <select
@@ -303,8 +303,8 @@ const EarlyAdopterSelector: React.FC = () => {
                 <ArrowLeft className="h-4 w-4" />
                 Back to Lean Canvas Builder
               </Link>
-              <Link to={getRoleScopedPath(profile?.role, 'discovery')} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                Continue to Interview Capture
+              <Link to={getRoleScopedPath(profile?.role)} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                Back to Builder workspace
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </div>

@@ -1,4 +1,4 @@
-# Ground Truth Contract
+# OM Venture OS Ground Truth Contract
 
 This document defines which system owns which truth in OM Venture OS.
 
@@ -11,13 +11,13 @@ Use it to prevent:
 
 ## System roles
 
-| System | Role | What it owns | What it does not own |
+| System | Role | What it owns | Write direction |
 | --- | --- | --- | --- |
-| Airtable | identity and operating anchor | company identity, people identity, membership operations, mentor operations context, reporting context from exact Airtable tables | canonical Builder evidence, readiness reviews, unlock activation state |
-| Jotform | raw intake | raw founder-submitted Builder inputs and notes before review | canonical company identity, canonical evidence, readiness, unlocks |
-| Miro | working board surface | live workshop boards, Lean Canvas board work, session artifacts, visual Builder homework | canonical runtime state, staff decisions, sync truth |
-| Firestore | runtime source of truth | canonical runtime records, raw intake queue, normalized evidence, readiness reviews, unlock access, founder runtime inputs | code contracts, system design intent, source-table naming truth |
-| GitHub | build and contract source | code, schema, rules, docs, operational contracts, migration logic | live operating data, live founder evidence |
+| Airtable | identity and operating anchor | company identity, people identity, membership operations, mentor operations context, reporting context from exact Airtable tables | Airtable -> Firestore |
+| Jotform | raw intake | raw founder-submitted Builder inputs and notes before review | Jotform -> Firestore raw only |
+| Miro | working board surface | live workshop boards, Lean Canvas board work, session artifacts, visual Builder homework | Miro -> Firestore by link or explicit structured copy only |
+| Firestore | runtime source of truth | canonical runtime records, raw intake queue, normalized evidence, readiness reviews, unlock access, founder runtime inputs | Firestore internal runtime only |
+| GitHub | build and contract source | code, schema, rules, docs, operational contracts, migration logic | GitHub -> runtime behavior through deploys, never direct data writes |
 
 ## Layer rule
 
@@ -29,6 +29,17 @@ Every record in OM Venture OS must be treated as one of these:
 
 Never let a `derived` record overwrite `canonical`.
 Never let a `canonical` record overwrite `raw`.
+
+## Write gate
+
+Before any new sync or importer writes to Firestore, answer all four:
+
+1. Is this raw, canonical, or derived?
+2. Which single system owns it?
+3. Is the write direction allowed here?
+4. Is provenance preserved on the written record?
+
+If any answer is unclear, do not ship the write path yet.
 
 ## Concept ownership
 
@@ -77,6 +88,7 @@ Required whenever Firestore creates canonical evidence from raw input:
 - link back to the raw source record
 - record who normalized it
 - record when normalization happened
+- preserve exact Airtable table names and exact Jotform form titles where provenance matters
 
 ## Conflict resolution rules
 
@@ -97,11 +109,11 @@ If two systems disagree:
 
 ## Enforceable implementation rule
 
-Before adding sync or importer logic, ask:
+If a proposed integration write would:
 
-1. Is this raw, canonical, or derived?
-2. Which single system owns it?
-3. Can this write safely overwrite an existing value?
-4. Is provenance preserved?
+- overwrite data owned by another system
+- skip the raw layer for Jotform-origin content
+- infer readiness or investor visibility from membership status
+- treat unlock eligibility as unlocked access
 
-If any answer is unclear, stop and document the conflict before shipping the integration.
+stop and resolve the contract conflict before implementation.

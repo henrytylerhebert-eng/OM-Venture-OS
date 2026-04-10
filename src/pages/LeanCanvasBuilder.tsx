@@ -31,13 +31,6 @@ const LeanCanvasBuilder: React.FC = () => {
     customerSegments: '',
     problems: '',
     existingAlternatives: '',
-    uniqueValueProposition: '',
-    solutionApproach: '',
-    channels: '',
-    keyMetrics: '',
-    revenueStreams: '',
-    costStructure: '',
-    unfairAdvantage: '',
   }));
 
   useEffect(() => {
@@ -66,13 +59,6 @@ const LeanCanvasBuilder: React.FC = () => {
         customerSegments: formatBuilderList(nextFoundation.leanCanvas.customerSegments),
         problems: formatBuilderList(nextFoundation.leanCanvas.problems),
         existingAlternatives: formatBuilderList(nextFoundation.leanCanvas.existingAlternatives),
-        uniqueValueProposition: nextFoundation.leanCanvas.uniqueValueProposition,
-        solutionApproach: formatBuilderList(nextFoundation.leanCanvas.solutionApproach),
-        channels: formatBuilderList(nextFoundation.leanCanvas.channels),
-        keyMetrics: formatBuilderList(nextFoundation.leanCanvas.keyMetrics),
-        revenueStreams: formatBuilderList(nextFoundation.leanCanvas.revenueStreams),
-        costStructure: formatBuilderList(nextFoundation.leanCanvas.costStructure),
-        unfairAdvantage: nextFoundation.leanCanvas.unfairAdvantage,
       });
     });
   }, [selectedCompanyId]);
@@ -97,13 +83,6 @@ const LeanCanvasBuilder: React.FC = () => {
             customerSegments: parseBuilderList(formState.customerSegments),
             problems: parseBuilderList(formState.problems),
             existingAlternatives: parseBuilderList(formState.existingAlternatives),
-            uniqueValueProposition: formState.uniqueValueProposition.trim(),
-            solutionApproach: parseBuilderList(formState.solutionApproach),
-            channels: parseBuilderList(formState.channels),
-            keyMetrics: parseBuilderList(formState.keyMetrics),
-            revenueStreams: parseBuilderList(formState.revenueStreams),
-            costStructure: parseBuilderList(formState.costStructure),
-            unfairAdvantage: formState.unfairAdvantage.trim(),
           },
         },
         profile?.personId
@@ -149,7 +128,7 @@ const LeanCanvasBuilder: React.FC = () => {
           <div className="space-y-2">
             <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Lean Canvas Builder</h1>
             <p className="max-w-3xl text-sm leading-6 text-slate-600">
-              The Lean Canvas is a live Builder artifact. Use it to sharpen the problem, segment, alternative, value promise, and reach path before interviews and tests begin.
+              Keep the Week 1 Lean Canvas narrow. At this stage, focus on customer segments, early adopters, top problems, and existing alternatives before moving into later Builder work.
             </p>
           </div>
           <select
@@ -178,7 +157,7 @@ const LeanCanvasBuilder: React.FC = () => {
             <div>
               <h2 className="text-lg font-semibold text-slate-950">Build the working model, not a pitch slide.</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Use one line per item for the list sections. Keep it plain enough that later interview prompts and tests can reuse it.
+                Use one line per item for the list sections. Keep it plain enough that later assumptions, interview guides, and outreach can reuse it.
               </p>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
@@ -216,76 +195,6 @@ const LeanCanvasBuilder: React.FC = () => {
                 placeholder="Current tools, services, workarounds, or substitutes"
               />
             </label>
-
-            <label className="space-y-2">
-              <span className="text-sm font-semibold text-slate-900">Channels</span>
-              <textarea
-                value={formState.channels}
-                onChange={(event) => setFormState((current) => ({ ...current, channels: event.target.value }))}
-                className={textAreaClass}
-                placeholder="Where this customer can actually be reached or discovered"
-              />
-            </label>
-
-            <label className="space-y-2 md:col-span-2">
-              <span className="text-sm font-semibold text-slate-900">Unique value proposition</span>
-              <textarea
-                value={formState.uniqueValueProposition}
-                onChange={(event) => setFormState((current) => ({ ...current, uniqueValueProposition: event.target.value }))}
-                className={textAreaClass}
-                placeholder="What makes this path meaningfully better for the customer once the problem is real?"
-              />
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-sm font-semibold text-slate-900">Solution approach</span>
-              <textarea
-                value={formState.solutionApproach}
-                onChange={(event) => setFormState((current) => ({ ...current, solutionApproach: event.target.value }))}
-                className={textAreaClass}
-                placeholder="Name the smallest useful solution moves, not a full feature list"
-              />
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-sm font-semibold text-slate-900">Key metrics to learn from later</span>
-              <textarea
-                value={formState.keyMetrics}
-                onChange={(event) => setFormState((current) => ({ ...current, keyMetrics: event.target.value }))}
-                className={textAreaClass}
-                placeholder="What will tell you the customer is moving, not just paying attention?"
-              />
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-sm font-semibold text-slate-900">Revenue streams</span>
-              <textarea
-                value={formState.revenueStreams}
-                onChange={(event) => setFormState((current) => ({ ...current, revenueStreams: event.target.value }))}
-                className={textAreaClass}
-                placeholder="How value could turn into revenue later"
-              />
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-sm font-semibold text-slate-900">Cost structure</span>
-              <textarea
-                value={formState.costStructure}
-                onChange={(event) => setFormState((current) => ({ ...current, costStructure: event.target.value }))}
-                className={textAreaClass}
-                placeholder="What this model depends on operationally or financially"
-              />
-            </label>
-
-            <label className="space-y-2 md:col-span-2">
-              <span className="text-sm font-semibold text-slate-900">Unfair advantage</span>
-              <textarea
-                value={formState.unfairAdvantage}
-                onChange={(event) => setFormState((current) => ({ ...current, unfairAdvantage: event.target.value }))}
-                className={textAreaClass}
-                placeholder="What gives you a real right to win here if the evidence holds up?"
-              />
-            </label>
           </div>
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -308,7 +217,7 @@ const LeanCanvasBuilder: React.FC = () => {
               <p><span className="font-semibold text-slate-900">Segments:</span> {foundation?.leanCanvas.customerSegments[0] || 'Still not named clearly yet.'}</p>
               <p><span className="font-semibold text-slate-900">Problem:</span> {foundation?.leanCanvas.problems[0] || 'Still too vague for interviews.'}</p>
               <p><span className="font-semibold text-slate-900">Alternative:</span> {foundation?.leanCanvas.existingAlternatives[0] || 'Current substitute still missing.'}</p>
-              <p><span className="font-semibold text-slate-900">Promise:</span> {foundation?.leanCanvas.uniqueValueProposition || 'Value promise still missing.'}</p>
+              <p><span className="font-semibold text-slate-900">Early adopter next:</span> Pick the first customer group that feels this problem most sharply after this canvas is clear.</p>
             </div>
           </div>
 
@@ -317,15 +226,15 @@ const LeanCanvasBuilder: React.FC = () => {
             <div className="mt-5 space-y-4 text-sm leading-6 text-slate-600">
               <div className="rounded-2xl bg-slate-50 px-4 py-3">
                 <p className="font-semibold text-slate-900">Assumption Mapper later</p>
-                <p className="mt-1">Your biggest problems, alternatives, and value promise become the first assumptions to rank.</p>
+                <p className="mt-1">Your biggest problems and current alternatives become the first risky beliefs to rank later.</p>
               </div>
               <div className="rounded-2xl bg-slate-50 px-4 py-3">
                 <p className="font-semibold text-slate-900">Interview Guide Builder later</p>
-                <p className="mt-1">Customer segments, problem blocks, and channels give the interview guide a real target and context.</p>
+                <p className="mt-1">Customer segments, early adopter focus, and problem blocks give the interview guide a real target and context later.</p>
               </div>
               <div className="rounded-2xl bg-slate-50 px-4 py-3">
                 <p className="font-semibold text-slate-900">Outreach Tracker later</p>
-                <p className="mt-1">Channels and segments become the first sourcing lanes for real customer conversations.</p>
+                <p className="mt-1">The segments you keep and the ones you narrow later become the first sourcing lanes for customer conversations.</p>
               </div>
             </div>
           </div>
@@ -333,9 +242,9 @@ const LeanCanvasBuilder: React.FC = () => {
           <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-950">Guardrails</h2>
             <ul className="mt-5 space-y-3 text-sm leading-6 text-slate-600">
-              <li>This is a working model. Expect to revise it once interviews start surfacing repeated truth.</li>
-              <li>Do not turn key metrics into fake traction. Name what you want to learn later, not what you have already proven.</li>
-              <li>If the problem, alternative, or channels are still fuzzy, tighten them before acting like the venture is interview-ready.</li>
+              <li>This is a Week 1 working model. It should stay narrow enough to revise once real discovery starts.</li>
+              <li>Do not turn this into a pitch deck. Focus on segments, top problems, and current alternatives first.</li>
+              <li>If the problem or existing alternative is still fuzzy, tighten them before acting like the venture is ready for later Builder steps.</li>
             </ul>
             <div className="mt-6 flex flex-wrap gap-4">
               <Link to={getRoleScopedPath(profile?.role, 'problem')} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">

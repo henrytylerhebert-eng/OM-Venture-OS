@@ -251,9 +251,7 @@ export const getBuilderFoundationCompletion = (foundation: BuilderFoundation | n
   const leanCanvasComplete =
     foundation.leanCanvas.customerSegments.length > 0 &&
     foundation.leanCanvas.problems.length > 0 &&
-    foundation.leanCanvas.existingAlternatives.length > 0 &&
-    foundation.leanCanvas.uniqueValueProposition.trim().length > 0 &&
-    foundation.leanCanvas.channels.length > 0;
+    foundation.leanCanvas.existingAlternatives.length > 0;
 
   const earlyAdopterComplete = [
     foundation.earlyAdopter.segmentName,

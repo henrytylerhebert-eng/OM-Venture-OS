@@ -1296,6 +1296,10 @@ const Patterns: React.FC = () => {
                       <span className="font-semibold text-slate-900">Assumption to resolve:</span>{' '}
                       {weakestAssumption?.statement || 'No assumption ranked yet'}
                     </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                      <span className="font-semibold text-slate-900">What happens next:</span>{' '}
+                      MVP / Test Design should turn this assumption into one test intent and one measurable success metric before Live Test begins.
+                    </div>
                     <Link
                       to={experimentsPath}
                       className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800"

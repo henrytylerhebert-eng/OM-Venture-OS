@@ -1,25 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
-import { getSignals, createSignal, deleteSignal } from '../services/evidenceService';
+import { getSignals, createSignal, deleteSignal, getExperiments, getAssumptions } from '../services/evidenceService';
 import { getCompanies } from '../services/companyService';
-import { Signal, Company } from '../types';
+import { Signal, Company, Experiment, Assumption, RoleType } from '../types';
 import { 
   Signal as SignalIcon, 
   Plus, 
   Search, 
   TrendingUp, 
-  TrendingDown, 
   Calendar,
-  BarChart,
   Activity,
-  Trash2
+  Trash2,
+  ArrowRight
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
+import { getRoleScopedPath } from '../lib/roleRouting';
 
 const Signals: React.FC = () => {
   const { profile } = useAuth();
+  const isFounder = profile?.role === RoleType.FOUNDER || profile?.role === RoleType.STARTUP_TEAM;
   const [signals, setSignals] = useState<Signal[]>([]);
+  const [experiments, setExperiments] = useState<Experiment[]>([]);
+  const [assumptions, setAssumptions] = useState<Assumption[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -65,8 +69,45 @@ const Signals: React.FC = () => {
   useEffect(() => {
     if (!selectedCompanyId) return;
     const unsubSignals = getSignals(setSignals, selectedCompanyId);
-    return () => unsubSignals();
+    const unsubExperiments = getExperiments(setExperiments, selectedCompanyId);
+    const unsubAssumptions = getAssumptions(setAssumptions, selectedCompanyId);
+    return () => {
+      unsubSignals();
+      unsubExperiments();
+      unsubAssumptions();
+    };
   }, [selectedCompanyId]);
+
+  const experimentsPath = getRoleScopedPath(profile?.role, 'experiments');
+  const primaryExperiment = useMemo(
+    () =>
+      experiments
+        .slice()
+        .sort((left, right) => {
+          if (left.active !== right.active) {
+            return left.active ? -1 : 1;
+          }
+
+          return new Date(right.updatedAt || right.createdAt).getTime() - new Date(left.updatedAt || left.createdAt).getTime();
+        })[0],
+    [experiments]
+  );
+  const linkedAssumption = useMemo(
+    () => assumptions.find((assumption) => assumption.id === primaryExperiment?.assumptionId),
+    [assumptions, primaryExperiment?.assumptionId]
+  );
+  const canLogSignal = !isFounder || Boolean(primaryExperiment && primaryExperiment.successMetric?.trim());
+
+  const openSignalModal = () => {
+    setNewSignal({
+      type: 'waitlist',
+      value: '',
+      source: '',
+      date: new Date().toISOString().split('T')[0],
+      notes: '',
+    });
+    setShowAddModal(true);
+  };
 
   const handleAddSignal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,10 +163,95 @@ const Signals: React.FC = () => {
 
   return (
     <div className="space-y-8">
+      {isFounder && selectedCompanyId && (
+        <>
+          <section className="rounded-[28px] border border-sky-200 bg-sky-50 p-6 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-800">
+                  <span className="rounded-full bg-white px-3 py-1 ring-1 ring-sky-200">MVP / Test Design</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  <span className="rounded-full bg-sky-900 px-3 py-1 text-white">Live Test</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-950">Log what changed once a real test is in motion.</h2>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">
+                    Live Test should carry forward the experiment intent and the success metric. Do not treat generic activity as signal unless it ties back to the test you designed.
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-800">Guardrail</p>
+                <p className="mt-2 max-w-xs">
+                  Signal without a live test is noise. Anchor every number to the current experiment and its success metric.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-950">Test handoff</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Live Test should inherit the active test intent instead of inventing a new story after launch.
+                  </p>
+                </div>
+                <Link
+                  to={experimentsPath}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:border-slate-400"
+                >
+                  Review MVP / Test Design
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Current test intent</p>
+                  <p className="mt-3 text-lg font-semibold text-slate-950">
+                    {primaryExperiment?.hypothesis || 'No test intent is recorded yet'}
+                  </p>
+                </div>
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Success metric</p>
+                  <p className="mt-3 text-lg font-semibold text-slate-950">
+                    {primaryExperiment?.successMetric || 'No success metric is recorded yet'}
+                  </p>
+                </div>
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Linked assumption</p>
+                  <p className="mt-3 text-lg font-semibold text-slate-950">
+                    {linkedAssumption?.statement || 'No linked assumption is set yet'}
+                  </p>
+                </div>
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Live test state</p>
+                  <p className="mt-3 text-lg font-semibold text-slate-950">
+                    {primaryExperiment ? (primaryExperiment.active ? 'Test is active' : 'Last test is complete') : 'No test is in motion yet'}
+                  </p>
+                </div>
+              </div>
+
+              {!canLogSignal && (
+                <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-900">
+                  Live Test is still too thin to be useful. Define a real experiment and give it a success metric before logging signals here.
+                </div>
+              )}
+            </div>
+          </section>
+        </>
+      )}
+
       <header className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Quantitative Signals</h1>
-          <p className="text-gray-500">Track hard data points and traction metrics.</p>
+          <h1 className="text-2xl font-bold text-gray-900">{isFounder ? 'Live Test' : 'Quantitative Signals'}</h1>
+          <p className="text-gray-500">
+            {isFounder
+              ? 'Track what changed once a real test started running, and keep each signal tied to the test intent.'
+              : 'Track hard data points and traction metrics.'}
+          </p>
         </div>
         <div className="flex space-x-3">
           <select 
@@ -138,8 +264,14 @@ const Signals: React.FC = () => {
             ))}
           </select>
           <button 
-            onClick={() => setShowAddModal(true)}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 flex items-center"
+            onClick={openSignalModal}
+            disabled={!canLogSignal}
+            className={cn(
+              'px-4 py-2 rounded-md text-sm font-medium flex items-center',
+              canLogSignal
+                ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                : 'cursor-not-allowed bg-slate-200 text-slate-500'
+            )}
           >
             <Plus className="h-4 w-4 mr-1" /> Log Signal
           </button>
@@ -207,8 +339,16 @@ const Signals: React.FC = () => {
           ) : (
             <div className="p-12 text-center">
               <SignalIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900">No signals logged</h3>
-              <p className="text-gray-500 mt-1">Start tracking metrics to show your traction.</p>
+              <h3 className="text-lg font-medium text-gray-900">
+                {isFounder ? 'No live test signals logged yet' : 'No signals logged'}
+              </h3>
+              <p className="text-gray-500 mt-1">
+                {isFounder
+                  ? canLogSignal
+                    ? 'Log only the numbers or outcomes that tie directly back to the current live test.'
+                    : 'Define the current test intent and success metric in MVP / Test Design before treating this step as active.'
+                  : 'Start tracking metrics to show your traction.'}
+              </p>
             </div>
           )}
         </div>
@@ -219,12 +359,25 @@ const Signals: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-900">Log Signal</h2>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Log Signal</h2>
+                {isFounder && (
+                  <p className="mt-1 text-sm text-gray-500">
+                    Tie this entry back to the current experiment and its success metric.
+                  </p>
+                )}
+              </div>
               <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600">
                 <Plus className="h-6 w-6 rotate-45" />
               </button>
             </div>
             <form onSubmit={handleAddSignal} className="p-6 space-y-4">
+              {isFounder && primaryExperiment && (
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-slate-700">
+                  <p><span className="font-semibold text-slate-900">Current test intent:</span> {primaryExperiment.hypothesis}</p>
+                  <p className="mt-2"><span className="font-semibold text-slate-900">Success metric:</span> {primaryExperiment.successMetric || 'Still needs to be defined'}</p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Signal Type / Metric</label>
                 <select 

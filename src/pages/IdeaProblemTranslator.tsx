@@ -139,7 +139,7 @@ const IdeaProblemTranslator: React.FC = () => {
           <div className="space-y-2">
             <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Idea-to-Problem Translator</h1>
             <p className="max-w-3xl text-sm leading-6 text-slate-600">
-              Start with the founder idea, then translate it into a clear problem owner, current behavior, weak workaround, and desired outcome before you write assumptions or interview questions.
+              Start Week 1 by translating the founder idea into a clear problem owner, current behavior, weak workaround, and desired outcome. This is clarity work, not evidence yet.
             </p>
           </div>
           <select
@@ -287,7 +287,7 @@ const IdeaProblemTranslator: React.FC = () => {
             <h2 className="text-lg font-semibold text-slate-950">Guardrails</h2>
             <ul className="mt-5 space-y-3 text-sm leading-6 text-slate-600">
               <li>Do not describe the product before you can describe the customer problem in their current workflow.</li>
-              <li>Do not treat this as evidence. This is a Builder input artifact that prepares discovery, not proof.</li>
+              <li>Do not treat this as evidence. This is a Week 1 Builder input artifact that prepares later discovery, not proof.</li>
               <li>Keep the language concrete enough that another person could recognize the customer and the moment immediately.</li>
             </ul>
             <Link

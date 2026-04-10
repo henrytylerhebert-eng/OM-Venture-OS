@@ -1,4 +1,4 @@
-# Source To Runtime Mapping
+# OM Venture OS Source To Runtime Mapping
 
 This document maps upstream source objects into OM Venture OS runtime layers.
 
@@ -48,6 +48,7 @@ Keep it operational:
 | venture stage | Firestore | derived from Builder progression and evidence |
 | readiness | Firestore | staff review record only |
 | unlock eligibility | Firestore derived logic | may recommend support, but does not activate it |
+| unlock activation | Firestore | only `companyResourceAccess` opens support in product |
 | investor visibility | Firestore | separate future OM-controlled access path |
 
 ## Sync and normalization path
@@ -76,6 +77,7 @@ Keep it operational:
 - raw submission fields: append-only or upsert on exact source submission id
 - canonical evidence: may only be created or edited through Firestore runtime logic
 - derived views: never overwrite canonical records
+- Miro links may update a reference field, but they do not overwrite canonical Builder evidence on their own
 
 ## Conflict rules
 
@@ -83,6 +85,16 @@ Keep it operational:
 - raw duplicate: dedupe by exact source submission id and source hash
 - normalization collision: do not auto-merge into canonical evidence without a deterministic target
 - label conflict: preserve exact Airtable/Jotform names in provenance layers, use internal labels only in runtime/UI layers
+
+## Short enforcement checklist
+
+Before adding any Airtable or Jotform sync step:
+
+1. land the record in the correct layer first
+2. preserve exact provenance names and ids
+3. resolve identity before normalization
+4. keep membership status, venture stage, readiness, unlock eligibility, unlock activation, and investor visibility separate
+5. stop if the write would cross ownership boundaries without an explicit contract rule
 
 ## Human decisions still needed
 
